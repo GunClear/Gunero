@@ -77,9 +77,11 @@ void test_all_merkle_tree_gadgets()
 template<typename FieldT, typename HashT>
 void Gunero_test_merkle_tree_check_read_gadget()
 {
-    /* prepare test */
+    /* prepare test variables */
+    std::clock_t    start = std::clock();
+    libff::print_header("Gunero prepare test variables");
     const size_t digest_len = HashT::get_digest_len();
-    const size_t tree_depth = 16;
+    const size_t tree_depth = 160;
     std::vector<merkle_authentication_node> path(tree_depth);
 
     libff::bit_vector prev_hash(digest_len);
@@ -106,8 +108,10 @@ void Gunero_test_merkle_tree_check_read_gadget()
         prev_hash = h;
     }
     libff::bit_vector root = prev_hash;
+    printf("\n"); libff::print_indent(); libff::print_mem("after prepare test variables"); libff::print_time("after prepare test variables");
 
-    /* execute test */
+    /* generate circuit */
+    libff::print_header("Gunero Generator");
     protoboard<FieldT> pb;
     pb_variable_array<FieldT> address_bits_va;
     address_bits_va.allocate(pb, tree_depth, "address_bits");
@@ -118,46 +122,57 @@ void Gunero_test_merkle_tree_check_read_gadget()
 
     path_var.generate_r1cs_constraints();
     ml.generate_r1cs_constraints();
+    printf("\n"); libff::print_indent(); libff::print_mem("after generator"); libff::print_time("after generator");
 
+    /* witness */
+    libff::print_header("Gunero witness 1");
     address_bits_va.fill_with_bits(pb, address_bits);
     assert(address_bits_va.get_field_element_from_bits(pb).as_ulong() == address);
     leaf_digest.generate_r1cs_witness(leaf);
     path_var.generate_r1cs_witness(address, path);
     ml.generate_r1cs_witness();
+    printf("\n"); libff::print_indent(); libff::print_mem("after witness 1"); libff::print_time("after witness 1");
 
     /* make sure that read checker didn't accidentally overwrite anything */
+    libff::print_header("Gunero witness 2");
     address_bits_va.fill_with_bits(pb, address_bits);
     leaf_digest.generate_r1cs_witness(leaf);
     root_digest.generate_r1cs_witness(root);
     assert(pb.is_satisfied());
+    printf("\n"); libff::print_indent(); libff::print_mem("after witness 2"); libff::print_time("after witness 2");
 
+    libff::print_header("Gunero verify");
     const size_t num_constraints = pb.num_constraints();
     const size_t expected_constraints = merkle_tree_check_read_gadget<FieldT, HashT>::expected_constraints(tree_depth);
     assert(num_constraints == expected_constraints);
+    printf("\n"); libff::print_indent(); libff::print_mem("after verify"); libff::print_time("after verify");
 }
 
 int main () {
-    default_r1cs_gg_ppzksnark_pp::init_public_params();
-    test_r1cs_gg_ppzksnark<default_r1cs_gg_ppzksnark_pp>(1000, 100);
+//    default_r1cs_gg_ppzksnark_pp::init_public_params();
+//    test_r1cs_gg_ppzksnark<default_r1cs_gg_ppzksnark_pp>(1000, 100);
 
-    libff::start_profiling();
+//    libff::start_profiling();
 
-#ifdef CURVE_BN128       // BN128 has fancy dependencies so it may be disabled
-    libff::bn128_pp::init_public_params();
-    test_all_merkle_tree_gadgets<libff::bn128_pp>();
-#endif
+//#ifdef CURVE_BN128       // BN128 has fancy dependencies so it may be disabled
+//    libff::bn128_pp::init_public_params();
+//    test_all_merkle_tree_gadgets<libff::bn128_pp>();
+//#endif
 
-    libff::edwards_pp::init_public_params();
-    test_all_merkle_tree_gadgets<libff::edwards_pp>();
+//    libff::edwards_pp::init_public_params();
+//    test_all_merkle_tree_gadgets<libff::edwards_pp>();
 
-    libff::mnt4_pp::init_public_params();
-    test_all_merkle_tree_gadgets<libff::mnt4_pp>();
+//    libff::mnt4_pp::init_public_params();
+//    test_all_merkle_tree_gadgets<libff::mnt4_pp>();
 
-    libff::mnt6_pp::init_public_params();
-    test_all_merkle_tree_gadgets<libff::mnt6_pp>();
+//    libff::mnt6_pp::init_public_params();
+//    test_all_merkle_tree_gadgets<libff::mnt6_pp>();
 
     //Gunero tests
     {
+        libff::start_profiling();
+        libff::edwards_pp::init_public_params();
+
         typedef libff::Fr<libff::edwards_pp> FieldT;
         Gunero_test_merkle_tree_check_read_gadget<FieldT, sha256_two_to_one_hash_gadget<FieldT> >();
     }
