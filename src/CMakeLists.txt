@@ -4,6 +4,8 @@ add_executable(
   main
 
   main.cpp
+  sparse_merkle_tree_check_read_gadget.tcc
+  sparse_merkle_tree_check_update_gadget.tcc
 )
 target_link_libraries(
   main
