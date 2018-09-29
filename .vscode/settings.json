@@ -55,6 +55,7 @@
         "algorithm": "cpp",
         "csignal": "cpp",
         "list": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "unordered_set": "cpp"
     }
 }

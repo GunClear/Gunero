@@ -6,7 +6,7 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "cd build && cmake .. && make -j2",
+            "command": "cd build && cmake .. && make -j$TOTAL_PROCESSORS",
             "group": {
                 "kind": "build",
                 "isDefault": true
