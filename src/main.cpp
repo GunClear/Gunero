@@ -141,14 +141,19 @@ void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
 
     printf("\n"); libff::print_indent(); libff::print_mem("after generator"); libff::print_time("after generator");
 
-    const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
+    {/* produce constraints */
+        libff::print_header("Gunero constraints");
+        const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
 
-    saveToFile(r1csPath, constraint_system);
+        saveToFile(r1csPath, constraint_system);
 
-    r1cs_ppzksnark_keypair<BaseT> keypair = r1cs_ppzksnark_generator<BaseT>(constraint_system);
+        r1cs_ppzksnark_keypair<BaseT> keypair = r1cs_ppzksnark_generator<BaseT>(constraint_system);
 
-    saveToFile(vkPath, keypair.vk);
-    saveToFile(pkPath, keypair.pk);
+        saveToFile(vkPath, keypair.vk);
+        saveToFile(pkPath, keypair.pk);
+
+        printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
+    }
 
     /* prepare test variables */
     libff::print_header("Gunero prepare test variables");
@@ -197,6 +202,15 @@ void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
 
     /* verify */
     libff::print_header("Gunero verify");
+    
+    {
+        tbcs_ppzksnark_verification_key<BaseT> vk;
+
+        loadFromFile(vkPath, vk);
+
+        vk_precomp = r1cs_ppzksnark_verifier_process_vk(vk);
+    }
+
     const size_t num_constraints = pb.num_constraints();
     const size_t expected_constraints = merkle_tree_check_read_gadget<FieldT, HashT>::expected_constraints(tree_depth);
     assert(num_constraints == expected_constraints);
