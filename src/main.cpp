@@ -4,6 +4,7 @@
 #include <libsnark/relations/constraint_satisfaction_problems/r1cs/examples/r1cs_examples.hpp>
 #include <libsnark/zk_proof_systems/ppzksnark/r1cs_gg_ppzksnark/r1cs_gg_ppzksnark.hpp>
 #include <libsnark/zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.hpp>
+#include <libsnark/zk_proof_systems/ppzksnark/uscs_ppzksnark/uscs_ppzksnark.hpp>
 
 #ifndef CURVE_BN128
 #define CURVE_BN128
@@ -25,6 +26,29 @@
 
 using namespace libsnark;
 //using namespace gunero;
+
+std::string strprintf(const char *fromat, ...)
+{
+    std::string s;
+    s.resize(128); // best guess
+    char *buff = const_cast<char *>(s.data());
+
+    va_list arglist;
+    va_start(arglist, fromat);
+    auto len = vsnprintf(buff, 128, fromat, arglist);
+    va_end(arglist);
+
+    if (len > 127)
+    {
+        va_start(arglist, fromat);
+        s.resize(len + 1); // leave room for null terminator
+        buff = const_cast<char *>(s.data());
+        len = vsnprintf(buff, len+1, fromat, arglist);
+        va_end(arglist);
+    }
+    s.resize(len);
+    return s; // move semantics FTW
+}
 
 template<typename T>
 void saveToFile(const std::string path, T& obj) {
@@ -192,24 +216,23 @@ void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
     leaf_digest.generate_r1cs_witness(leaf);
     path_var.generate_r1cs_witness(address, path);
     ml.generate_r1cs_witness();
+    printf("\n"); libff::print_indent(); libff::print_mem("after witness (proof)"); libff::print_time("after witness (proof)");
+
+    /* verify */
+    libff::print_header("Gunero verify");
+    {
+        r1cs_ppzksnark_verification_key<BaseT> vk;
+
+        loadFromFile(vkPath, vk);
+
+        auto vk_precomp = r1cs_ppzksnark_verifier_process_vk(vk);
+    }
 
     /* make sure that read checker didn't accidentally overwrite anything */
     address_bits_va.fill_with_bits(pb, address_bits);
     leaf_digest.generate_r1cs_witness(leaf);
     root_digest.generate_r1cs_witness(root);
     assert(pb.is_satisfied());
-    printf("\n"); libff::print_indent(); libff::print_mem("after witness (proof)"); libff::print_time("after witness (proof)");
-
-    /* verify */
-    libff::print_header("Gunero verify");
-    
-    {
-        tbcs_ppzksnark_verification_key<BaseT> vk;
-
-        loadFromFile(vkPath, vk);
-
-        vk_precomp = r1cs_ppzksnark_verifier_process_vk(vk);
-    }
 
     const size_t num_constraints = pb.num_constraints();
     const size_t expected_constraints = merkle_tree_check_read_gadget<FieldT, HashT>::expected_constraints(tree_depth);
