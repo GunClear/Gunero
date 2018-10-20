@@ -25,8 +25,21 @@
 #include "sparse_merkle_tree_check_read_gadget.hpp"
 #include "sparse_merkle_tree_check_update_gadget.hpp"
 
+#include "serialize.h"
+#include "uint256.h"
+#include "Proof.hpp"
+#include "JoinSplit.hpp"
+
 using namespace libsnark;
+using namespace libzcash;
 //using namespace gunero;
+
+template<typename FieldT, typename BaseT, typename HashT, size_t tree_depth>
+class guneromembership_gadget : public gadget<FieldT> {
+public:
+    guneromembership_gadget() {}
+    ~guneromembership_gadget() {}
+};
 
 std::string strprintf(const char *fromat, ...)
 {
@@ -130,7 +143,7 @@ void test_r1cs_gg_ppzksnark(size_t num_constraints, size_t input_size)
 }
 
 
-template<typename ppT>
+/*template<typename ppT>
 void test_all_merkle_tree_gadgets()
 {
     typedef libff::Fr<ppT> FieldT;
@@ -139,7 +152,7 @@ void test_all_merkle_tree_gadgets()
 
     test_merkle_tree_check_update_gadget<FieldT, CRH_with_bit_out_gadget<FieldT> >();
     test_merkle_tree_check_update_gadget<FieldT, sha256_two_to_one_hash_gadget<FieldT> >();
-}
+}*/
 
 template<typename FieldT, typename BaseT, typename HashT>
 void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
@@ -242,239 +255,13 @@ void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
     libff::clear_profiling_counters();
 }
 
-const unsigned char G1_PREFIX_MASK = 0x02;
-const unsigned char G2_PREFIX_MASK = 0x0a;
-
-// Element in the base field
-class Fq {
-private:
-    base_blob<256> data;
-public:
-    Fq() : data() { }
-
-    template<typename libsnark_Fq>
-    Fq(libsnark_Fq element);
-
-    template<typename libsnark_Fq>
-    libsnark_Fq to_libsnark_fq() const;
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(data);
-    }
-
-    friend bool operator==(const Fq& a, const Fq& b)
-    {
-        return (
-            a.data == b.data
-        );
-    }
-
-    friend bool operator!=(const Fq& a, const Fq& b)
-    {
-        return !(a == b);
-    }
-};
-
-// Element in the extension field
-class Fq2 {
-private:
-    base_blob<512> data;
-public:
-    Fq2() : data() { }
-
-    template<typename libsnark_Fq2>
-    Fq2(libsnark_Fq2 element);
-
-    template<typename libsnark_Fq2>
-    libsnark_Fq2 to_libsnark_fq2() const;
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(data);
-    }
-
-    friend bool operator==(const Fq2& a, const Fq2& b)
-    {
-        return (
-            a.data == b.data
-        );
-    }
-
-    friend bool operator!=(const Fq2& a, const Fq2& b)
-    {
-        return !(a == b);
-    }
-};
-
-// Compressed point in G1
-class CompressedG1 {
-private:
-    bool y_lsb;
-    Fq x;
-
-public:
-    CompressedG1() : y_lsb(false), x() { }
-
-    template<typename libsnark_G1>
-    CompressedG1(libsnark_G1 point);
-
-    template<typename libsnark_G1>
-    libsnark_G1 to_libsnark_g1() const;
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        unsigned char leadingByte = G1_PREFIX_MASK;
-
-        if (y_lsb) {
-            leadingByte |= 1;
-        }
-
-        READWRITE(leadingByte);
-
-        if ((leadingByte & (~1)) != G1_PREFIX_MASK) {
-            throw std::ios_base::failure("lead byte of G1 point not recognized");
-        }
-
-        y_lsb = leadingByte & 1;
-
-        READWRITE(x);
-    }
-
-    friend bool operator==(const CompressedG1& a, const CompressedG1& b)
-    {
-        return (
-            a.y_lsb == b.y_lsb &&
-            a.x == b.x
-        );
-    }
-
-    friend bool operator!=(const CompressedG1& a, const CompressedG1& b)
-    {
-        return !(a == b);
-    }
-};
-
-// Compressed point in G2
-class CompressedG2 {
-private:
-    bool y_gt;
-    Fq2 x;
-
-public:
-    CompressedG2() : y_gt(false), x() { }
-
-    template<typename libsnark_G2>
-    CompressedG2(libsnark_G2 point);
-
-    template<typename libsnark_G2>
-    libsnark_G2 to_libsnark_g2() const;
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        unsigned char leadingByte = G2_PREFIX_MASK;
-
-        if (y_gt) {
-            leadingByte |= 1;
-        }
-
-        READWRITE(leadingByte);
-
-        if ((leadingByte & (~1)) != G2_PREFIX_MASK) {
-            throw std::ios_base::failure("lead byte of G2 point not recognized");
-        }
-
-        y_gt = leadingByte & 1;
-
-        READWRITE(x);
-    }
-
-    friend bool operator==(const CompressedG2& a, const CompressedG2& b)
-    {
-        return (
-            a.y_gt == b.y_gt &&
-            a.x == b.x
-        );
-    }
-
-    friend bool operator!=(const CompressedG2& a, const CompressedG2& b)
-    {
-        return !(a == b);
-    }
-};
-
-// Compressed zkSNARK proof
-class ZCProof {
-private:
-    CompressedG1 g_A;
-    CompressedG1 g_A_prime;
-    CompressedG2 g_B;
-    CompressedG1 g_B_prime;
-    CompressedG1 g_C;
-    CompressedG1 g_C_prime;
-    CompressedG1 g_K;
-    CompressedG1 g_H;
-
-public:
-    ZCProof() : g_A(), g_A_prime(), g_B(), g_B_prime(), g_C(), g_C_prime(), g_K(), g_H() { }
-
-    // Produces a compressed proof using a libsnark zkSNARK proof
-    template<typename libsnark_proof>
-    ZCProof(const libsnark_proof& proof);
-
-    // Produces a libsnark zkSNARK proof out of this proof,
-    // or throws an exception if it is invalid.
-    template<typename libsnark_proof>
-    libsnark_proof to_libsnark_proof() const;
-
-    static ZCProof random_invalid();
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(g_A);
-        READWRITE(g_A_prime);
-        READWRITE(g_B);
-        READWRITE(g_B_prime);
-        READWRITE(g_C);
-        READWRITE(g_C_prime);
-        READWRITE(g_K);
-        READWRITE(g_H);
-    }
-
-    friend bool operator==(const ZCProof& a, const ZCProof& b)
-    {
-        return (
-            a.g_A == b.g_A &&
-            a.g_A_prime == b.g_A_prime &&
-            a.g_B == b.g_B &&
-            a.g_B_prime == b.g_B_prime &&
-            a.g_C == b.g_C &&
-            a.g_C_prime == b.g_C_prime &&
-            a.g_K == b.g_K &&
-            a.g_H == b.g_H
-        );
-    }
-
-    friend bool operator!=(const ZCProof& a, const ZCProof& b)
-    {
-        return !(a == b);
-    }
-};
-
 template<typename FieldT, typename BaseT, typename HashT, size_t tree_depth>
 class GuneroMembershipCircuit
 {
 public:
+    static const size_t NumInputs = 999;
+    static const size_t NumOutputs = 9;
+
     r1cs_ppzksnark_proving_key<BaseT> pk;
     r1cs_ppzksnark_verification_key<BaseT> vk;
     r1cs_ppzksnark_processed_verification_key<BaseT> vk_precomp;
@@ -556,11 +343,11 @@ public:
         }
 
         try {
-            auto r1cs_proof = proof.to_libsnark_proof<r1cs_ppzksnark_proof<ppzksnark_ppT>>();
+            auto r1cs_proof = proof.to_libsnark_proof<r1cs_ppzksnark_proof<BaseT>>();
 
             uint256 h_sig = this->h_sig(randomSeed, nullifiers, pubKeyHash);
 
-            auto witness = joinsplit_gadget<FieldT, NumInputs, NumOutputs>::witness_map(
+            auto witness = guneromembership_gadget<FieldT, BaseT, HashT, tree_depth, NumInputs, NumOutputs>::witness_map(
                 rt,
                 h_sig,
                 macs,
@@ -742,7 +529,7 @@ public:
         // estimate that it doesn't matter if we check every time.
         pb.constraint_system.swap_AB_if_beneficial();
 
-        return ZCProof(r1cs_ppzksnark_prover<ppzksnark_ppT>(
+        return ZCProof(r1cs_ppzksnark_prover<BaseT>(
             *pk,
             primary_input,
             aux_input,
@@ -752,53 +539,12 @@ public:
 };
 
 int main () {
-//    default_r1cs_gg_ppzksnark_pp::init_public_params();
-//    test_r1cs_gg_ppzksnark<default_r1cs_gg_ppzksnark_pp>(1000, 100);
+    //bn128_pp
+    libff::bn128_pp::init_public_params();
 
-//    libff::start_profiling();
-
-//#ifdef CURVE_BN128       // BN128 has fancy dependencies so it may be disabled
-//    libff::bn128_pp::init_public_params();
-//    test_all_merkle_tree_gadgets<libff::bn128_pp>();
-//#endif
-
-//    libff::edwards_pp::init_public_params();
-//    test_all_merkle_tree_gadgets<libff::edwards_pp>();
-
-//    libff::mnt4_pp::init_public_params();
-//    test_all_merkle_tree_gadgets<libff::mnt4_pp>();
-
-//    libff::mnt6_pp::init_public_params();
-//    test_all_merkle_tree_gadgets<libff::mnt6_pp>();
-
-    //Gunero tests
- //   {//edwards_pp
- //       libff::start_profiling();
- //       libff::edwards_pp::init_public_params();
-
-//        typedef libff::Fr<libff::edwards_pp> FieldT;
-//        Gunero_test_merkle_tree_check_read_gadget<FieldT, sha256_two_to_one_hash_gadget<FieldT> >();
-//
-//        libff::clear_profiling_counters();
-//    }
-
-    {//bn128_pp
-        libff::bn128_pp::init_public_params();
-
-        typedef libff::Fr<libff::bn128_pp> FieldT;
-        typedef libff::bn128_pp BaseT;
-        Gunero_test_merkle_tree_check_read_gadget<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT> >(64);
-    }
-
-//    {//bn128_pp
-//        libff::start_profiling();
-//        libff::bn128_pp::init_public_params();
-
-//        typedef libff::Fr<libff::bn128_pp> FieldT;
-//        Gunero_test_sparse_merkle_tree_check_read_gadget<FieldT, sha256_two_to_one_hash_gadget<FieldT> >();
-
-//        libff::clear_profiling_counters();
-//    }
+    typedef libff::Fr<libff::bn128_pp> FieldT;
+    typedef libff::bn128_pp BaseT;
+    Gunero_test_merkle_tree_check_read_gadget<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT> >(64);
 
     return 0;
 }
