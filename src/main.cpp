@@ -34,11 +34,63 @@ using namespace libsnark;
 using namespace libzcash;
 //using namespace gunero;
 
-template<typename FieldT, typename BaseT, typename HashT, size_t tree_depth>
+template<typename FieldT, typename BaseT, typename HashT, size_t tree_depth, size_t NumInputs, size_t NumOutputs>
 class guneromembership_gadget : public gadget<FieldT> {
 public:
-    guneromembership_gadget() {}
-    ~guneromembership_gadget() {}
+    const size_t digest_len;
+    protoboard<FieldT> pb;
+    digest_variable<FieldT> leaf_digest;
+    digest_variable<FieldT> root_digest;
+    merkle_authentication_path_variable<FieldT, HashT> path_var;
+    pb_variable_array<FieldT> address_bits_va;
+    merkle_tree_check_read_gadget<FieldT, HashT> ml;
+    std::string r1csPath;
+    std::string vkPath;
+    std::string pkPath;
+
+    guneromembership_gadget()
+        : gadget<FieldT>(pb, "guneromembership_gadget")
+        , digest_len(HashT::get_digest_len())
+        , leaf_digest(pb, digest_len, "input_block")
+        , root_digest(pb, digest_len, "output_digest")
+        , path_var(pb, tree_depth, "path_var")
+    {
+        pb_variable_array<FieldT> address_bits_va;
+        address_bits_va.allocate(pb, tree_depth, "address_bits");
+        //digest_variable<FieldT> leaf_digest(pb, digest_len, "input_block");
+        //digest_variable<FieldT> root_digest(pb, digest_len, "output_digest");
+        //merkle_tree_check_read_gadget<FieldT, HashT> ml(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml");
+        ml = merkle_tree_check_read_gadget<FieldT, HashT>(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml");
+
+        r1csPath = "r1cs.bin";
+        vkPath = "vk.bin";
+        pkPath = "pk.bin";
+    }
+
+    ~guneromembership_gadget()
+    {
+
+    }
+
+    void generate_r1cs_constraints() //override
+    {
+        libff::print_header("Gunero constraints");
+
+        path_var.generate_r1cs_constraints();
+        ml.generate_r1cs_constraints();
+
+        const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
+
+        saveToFile(r1csPath, constraint_system);
+
+        r1cs_ppzksnark_keypair<BaseT> keypair = r1cs_ppzksnark_generator<BaseT>(constraint_system);
+
+        saveToFile(vkPath, keypair.vk);
+        saveToFile(pkPath, keypair.pk);
+
+        printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
+    }
+
 };
 
 std::string strprintf(const char *fromat, ...)
@@ -142,62 +194,57 @@ void test_r1cs_gg_ppzksnark(size_t num_constraints, size_t input_size)
     assert(bit);
 }
 
-
-/*template<typename ppT>
-void test_all_merkle_tree_gadgets()
-{
-    typedef libff::Fr<ppT> FieldT;
-    test_merkle_tree_check_read_gadget<FieldT, CRH_with_bit_out_gadget<FieldT> >();
-    test_merkle_tree_check_read_gadget<FieldT, sha256_two_to_one_hash_gadget<FieldT> >();
-
-    test_merkle_tree_check_update_gadget<FieldT, CRH_with_bit_out_gadget<FieldT> >();
-    test_merkle_tree_check_update_gadget<FieldT, sha256_two_to_one_hash_gadget<FieldT> >();
-}*/
-
-template<typename FieldT, typename BaseT, typename HashT>
-void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
+template<typename FieldT, typename BaseT, typename HashT, size_t tree_depth>
+void Gunero_test_merkle_tree_check_read_gadget()
 {
     libff::start_profiling();
-    const size_t digest_len = HashT::get_digest_len();
+    //const size_t digest_len = HashT::get_digest_len();
 
-    std::string r1csPath = "r1cs.bin";
-    std::string vkPath = "vk.bin";
-    std::string pkPath = "pk.bin";
+    // std::string r1csPath = "r1cs.bin";
+    // std::string vkPath = "vk.bin";
+    // std::string pkPath = "pk.bin";
 
     /* generate circuit */
     libff::print_header("Gunero Generator");
-    protoboard<FieldT> pb;
-    pb_variable_array<FieldT> address_bits_va;
-    address_bits_va.allocate(pb, tree_depth, "address_bits");
-    digest_variable<FieldT> leaf_digest(pb, digest_len, "input_block");
-    digest_variable<FieldT> root_digest(pb, digest_len, "output_digest");
-    merkle_authentication_path_variable<FieldT, HashT> path_var(pb, tree_depth, "path_var");
-    merkle_tree_check_read_gadget<FieldT, HashT> ml(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml");
 
-    path_var.generate_r1cs_constraints();
-    ml.generate_r1cs_constraints();
+    const size_t NumInputs = 999;
+    const size_t NumOutputs = 9;
+
+    guneromembership_gadget<FieldT, BaseT, HashT, tree_depth, NumInputs, NumOutputs> gunero();
+
+    //protoboard<FieldT> pb;
+    // pb_variable_array<FieldT> address_bits_va;
+    // address_bits_va.allocate(pb, tree_depth, "address_bits");
+    // digest_variable<FieldT> leaf_digest(pb, digest_len, "input_block");
+    // digest_variable<FieldT> root_digest(pb, digest_len, "output_digest");
+    // merkle_authentication_path_variable<FieldT, HashT> path_var(pb, tree_depth, "path_var");
+    // merkle_tree_check_read_gadget<FieldT, HashT> ml(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml");
+
+    // path_var.generate_r1cs_constraints();
+    // ml.generate_r1cs_constraints();
 
     printf("\n"); libff::print_indent(); libff::print_mem("after generator"); libff::print_time("after generator");
 
-    {/* produce constraints */
-        libff::print_header("Gunero constraints");
-        const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
+    gunero.generate_r1cs_constraints();
+    // {/* produce constraints */
+    //     libff::print_header("Gunero constraints");
+    //     const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
 
-        saveToFile(r1csPath, constraint_system);
+    //     saveToFile(r1csPath, constraint_system);
 
-        r1cs_ppzksnark_keypair<BaseT> keypair = r1cs_ppzksnark_generator<BaseT>(constraint_system);
+    //     r1cs_ppzksnark_keypair<BaseT> keypair = r1cs_ppzksnark_generator<BaseT>(constraint_system);
 
-        saveToFile(vkPath, keypair.vk);
-        saveToFile(pkPath, keypair.pk);
+    //     saveToFile(vkPath, keypair.vk);
+    //     saveToFile(pkPath, keypair.pk);
 
-        printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
-    }
+    //     printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
+    // }
 
     /* prepare test variables */
     libff::print_header("Gunero prepare test variables");
     std::vector<merkle_authentication_node> path(tree_depth);
 
-    libff::bit_vector prev_hash(digest_len);
+    libff::bit_vector prev_hash(gunero.digest_len);
     std::generate(prev_hash.begin(), prev_hash.end(), [&]() { return std::rand() % 2; });
     libff::bit_vector leaf = prev_hash;
 
@@ -209,7 +256,7 @@ void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
         const bool computed_is_right = (std::rand() % 2);
         address |= (computed_is_right ? 1ul << (tree_depth-1-level) : 0);
         address_bits.push_back(computed_is_right);
-        libff::bit_vector other(digest_len);
+        libff::bit_vector other(gunero.digest_len);
         std::generate(other.begin(), other.end(), [&]() { return std::rand() % 2; });
 
         libff::bit_vector block = prev_hash;
@@ -225,11 +272,11 @@ void Gunero_test_merkle_tree_check_read_gadget(size_t tree_depth)
 
     /* witness (proof) */
     libff::print_header("Gunero witness (proof)");
-    address_bits_va.fill_with_bits(pb, address_bits);
-    assert(address_bits_va.get_field_element_from_bits(pb).as_ulong() == address);
-    leaf_digest.generate_r1cs_witness(leaf);
-    path_var.generate_r1cs_witness(address, path);
-    ml.generate_r1cs_witness();
+    gunero.address_bits_va.fill_with_bits(gunero.pb, address_bits);
+    assert(gunero.address_bits_va.get_field_element_from_bits(gunero.pb).as_ulong() == address);
+    gunero.leaf_digest.generate_r1cs_witness(leaf);
+    gunero.path_var.generate_r1cs_witness(address, path);
+    gunero.ml.generate_r1cs_witness();
     printf("\n"); libff::print_indent(); libff::print_mem("after witness (proof)"); libff::print_time("after witness (proof)");
 
     /* verify */
@@ -311,7 +358,7 @@ public:
     r1cs_constraint_system<FieldT> generate_r1cs() {
         protoboard<FieldT> pb;
 
-        guneromembership_gadget<FieldT, BaseT, HashT, tree_depth> g(pb);
+        guneromembership_gadget<FieldT, BaseT, HashT, tree_depth, NumInputs, NumOutputs> g(pb);
         g.generate_r1cs_constraints();
 
         return pb.get_constraint_system();
@@ -388,13 +435,13 @@ public:
             throw std::runtime_error("JoinSplit proving key not loaded");
         }
 
-        if (vpub_old > MAX_MONEY) {
-            throw std::invalid_argument("nonsensical vpub_old value");
-        }
+        // if (vpub_old > MAX_MONEY) {
+        //     throw std::invalid_argument("nonsensical vpub_old value");
+        // }
 
-        if (vpub_new > MAX_MONEY) {
-            throw std::invalid_argument("nonsensical vpub_new value");
-        }
+        // if (vpub_new > MAX_MONEY) {
+        //     throw std::invalid_argument("nonsensical vpub_new value");
+        // }
 
         uint64_t lhs_value = vpub_old;
         uint64_t rhs_value = vpub_new;
@@ -420,16 +467,16 @@ public:
                     throw std::invalid_argument("input note not authorized to spend with given key");
                 }
 
-                // Balance must be sensical
-                if (inputs[i].note.value > MAX_MONEY) {
-                    throw std::invalid_argument("nonsensical input note value");
-                }
+                // // Balance must be sensical
+                // if (inputs[i].note.value > MAX_MONEY) {
+                //     throw std::invalid_argument("nonsensical input note value");
+                // }
 
                 lhs_value += inputs[i].note.value;
 
-                if (lhs_value > MAX_MONEY) {
-                    throw std::invalid_argument("nonsensical left hand size of joinsplit balance");
-                }
+                // if (lhs_value > MAX_MONEY) {
+                //     throw std::invalid_argument("nonsensical left hand size of joinsplit balance");
+                // }
             }
 
             // Compute nullifier of input
@@ -449,15 +496,15 @@ public:
         for (size_t i = 0; i < NumOutputs; i++) {
             // Sanity checks of output
             {
-                if (outputs[i].value > MAX_MONEY) {
-                    throw std::invalid_argument("nonsensical output value");
-                }
+                // if (outputs[i].value > MAX_MONEY) {
+                //     throw std::invalid_argument("nonsensical output value");
+                // }
 
                 rhs_value += outputs[i].value;
 
-                if (rhs_value > MAX_MONEY) {
-                    throw std::invalid_argument("nonsensical right hand side of joinsplit balance");
-                }
+                // if (rhs_value > MAX_MONEY) {
+                //     throw std::invalid_argument("nonsensical right hand side of joinsplit balance");
+                // }
             }
 
             // Sample r
@@ -502,7 +549,7 @@ public:
 
         protoboard<FieldT> pb;
         {
-            joinsplit_gadget<FieldT, NumInputs, NumOutputs> g(pb);
+            guneromembership_gadget<FieldT, BaseT, HashT, tree_depth, NumInputs, NumOutputs> g(pb);
             g.generate_r1cs_constraints();
             g.generate_r1cs_witness(
                 phi,
