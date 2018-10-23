@@ -11,6 +11,24 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "cd build && make clean",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "rebuild",
+            "type": "shell",
+            "command": "cd build && cmake .. && make clean && make -j$TOTAL_PROCESSORS",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
         }
     ]
 }

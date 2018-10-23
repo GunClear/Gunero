@@ -14,6 +14,9 @@ add_executable(
   main.cpp
   sparse_merkle_tree_check_read_gadget.tcc
   sparse_merkle_tree_check_update_gadget.tcc
+  crypto/sha256.cpp
+  uint256.cpp
+  utilstrencodings.cpp
 )
 target_link_libraries(
   main
