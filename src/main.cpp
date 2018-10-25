@@ -26,16 +26,165 @@
 #include "sparse_merkle_tree_check_update_gadget.hpp"
 
 #include "serialize.h"
-#include "uint256.h"
-//#include "Proof.hpp"
-//#include "JoinSplit.hpp"
-//#include "uint252.h"
-//#include "NoteEncryption.hpp"
 #include "crypto/sha256.h"
 
 using namespace libsnark;
 //using namespace libzcash;
 //using namespace gunero;
+
+const signed char p_util_hexdigit[256] =
+{ -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  0,1,2,3,4,5,6,7,8,9,-1,-1,-1,-1,-1,-1,
+  -1,0xa,0xb,0xc,0xd,0xe,0xf,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,0xa,0xb,0xc,0xd,0xe,0xf,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+  -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1, };
+
+signed char HexDigit(char c)
+{
+    return p_util_hexdigit[(unsigned char)c];
+}
+
+/** Template base class for fixed-sized opaque blobs. */
+template<unsigned int BITS>
+class base_blob
+{
+protected:
+    enum { WIDTH=BITS/8 };
+    alignas(uint32_t) uint8_t data[WIDTH];
+public:
+    base_blob()
+    {
+        memset(data, 0, sizeof(data));
+    }
+
+    explicit base_blob(const std::vector<unsigned char>& vch);
+
+    bool IsNull() const
+    {
+        for (int i = 0; i < WIDTH; i++)
+            if (data[i] != 0)
+                return false;
+        return true;
+    }
+
+    void SetNull()
+    {
+        memset(data, 0, sizeof(data));
+    }
+
+    friend inline bool operator==(const base_blob& a, const base_blob& b) { return memcmp(a.data, b.data, sizeof(a.data)) == 0; }
+    friend inline bool operator!=(const base_blob& a, const base_blob& b) { return memcmp(a.data, b.data, sizeof(a.data)) != 0; }
+    friend inline bool operator<(const base_blob& a, const base_blob& b) { return memcmp(a.data, b.data, sizeof(a.data)) < 0; }
+
+    std::string GetHex() const;
+    void SetHex(const char* psz);
+    void SetHex(const std::string& str);
+    std::string ToString() const;
+
+    unsigned char* begin()
+    {
+        return &data[0];
+    }
+
+    unsigned char* end()
+    {
+        return &data[WIDTH];
+    }
+
+    const unsigned char* begin() const
+    {
+        return &data[0];
+    }
+
+    const unsigned char* end() const
+    {
+        return &data[WIDTH];
+    }
+
+    unsigned int size() const
+    {
+        return sizeof(data);
+    }
+
+    unsigned int GetSerializeSize(int nType, int nVersion) const
+    {
+        return sizeof(data);
+    }
+
+    template<typename Stream>
+    void Serialize(Stream& s, int nType, int nVersion) const
+    {
+        s.write((char*)data, sizeof(data));
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s, int nType, int nVersion)
+    {
+        s.read((char*)data, sizeof(data));
+    }
+};
+
+/** 256-bit opaque blob.
+ * @note This type is called uint256 for historical reasons only. It is an
+ * opaque blob of 256 bits and has no integer operations. Use arith_uint256 if
+ * those are required.
+ */
+class uint256 : public base_blob<256> {
+public:
+    uint256() {}
+    uint256(const base_blob<256>& b) : base_blob<256>(b) {}
+    explicit uint256(const std::vector<unsigned char>& vch) : base_blob<256>(vch) {}
+
+    /** A cheap hash function that just returns 64 bits from the result, it can be
+     * used when the contents are considered uniformly random. It is not appropriate
+     * when the value can easily be influenced from outside as e.g. a network adversary could
+     * provide values to trigger worst-case behavior.
+     * @note The result of this function is not stable between little and big endian.
+     */
+    uint64_t GetCheapHash() const
+    {
+        uint64_t result;
+        memcpy((void*)&result, (void*)data, 8);
+        return result;
+    }
+
+    /** A more secure, salted hash function.
+     * @note This hash is not stable between little and big endian.
+     */
+    uint64_t GetHash(const uint256& salt) const;
+};
+
+/* uint256 from const char *.
+ * This is a separate function because the constructor uint256(const char*) can result
+ * in dangerously catching uint256(0).
+ */
+inline uint256 uint256S(const char *str)
+{
+    uint256 rv;
+    rv.SetHex(str);
+    return rv;
+}
+/* uint256 from std::string.
+ * This is a separate function because the constructor uint256(const std::string &str) can result
+ * in dangerously catching uint256(0) via std::string(const char*).
+ */
+inline uint256 uint256S(const std::string& str)
+{
+    uint256 rv;
+    rv.SetHex(str);
+    return rv;
+}
 
 class uint252 {
 private:
@@ -77,6 +226,181 @@ public:
     friend inline bool operator==(const uint252& a, const uint252& b) { return a.contents == b.contents; }
 };
 
+class uint160 {
+private:
+    uint256 contents;
+
+public:
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(contents);
+
+        if ((*contents.begin()) & 0xF0) {
+            throw std::ios_base::failure("spending key has invalid leading bits");
+        }
+    }
+
+    const unsigned char* begin() const
+    {
+        return contents.begin();
+    }
+
+    const unsigned char* end() const
+    {
+        return contents.end();
+    }
+
+    uint160() : contents() {};
+    explicit uint160(const uint256& in) : contents(in) {
+        if (*contents.begin() & 0xF0) {
+            throw std::domain_error("leading bits are set in argument given to uint160 constructor");
+        }
+    }
+
+    uint256 inner() const {
+        return contents;
+    }
+
+    friend inline bool operator==(const uint160& a, const uint160& b) { return a.contents == b.contents; }
+};
+
+template <unsigned int BITS>
+base_blob<BITS>::base_blob(const std::vector<unsigned char>& vch)
+{
+    assert(vch.size() == sizeof(data));
+    memcpy(data, &vch[0], sizeof(data));
+}
+
+template <unsigned int BITS>
+std::string base_blob<BITS>::GetHex() const
+{
+    char psz[sizeof(data) * 2 + 1];
+    for (unsigned int i = 0; i < sizeof(data); i++)
+        sprintf(psz + i * 2, "%02x", data[sizeof(data) - i - 1]);
+    return std::string(psz, psz + sizeof(data) * 2);
+}
+
+template <unsigned int BITS>
+void base_blob<BITS>::SetHex(const char* psz)
+{
+    memset(data, 0, sizeof(data));
+
+    // skip leading spaces
+    while (isspace(*psz))
+        psz++;
+
+    // skip 0x
+    if (psz[0] == '0' && tolower(psz[1]) == 'x')
+        psz += 2;
+
+    // hex string to uint
+    const char* pbegin = psz;
+    while (::HexDigit(*psz) != -1)
+        psz++;
+    psz--;
+    unsigned char* p1 = (unsigned char*)data;
+    unsigned char* pend = p1 + WIDTH;
+    while (psz >= pbegin && p1 < pend) {
+        *p1 = ::HexDigit(*psz--);
+        if (psz >= pbegin) {
+            *p1 |= ((unsigned char)::HexDigit(*psz--) << 4);
+            p1++;
+        }
+    }
+}
+
+template <unsigned int BITS>
+void base_blob<BITS>::SetHex(const std::string& str)
+{
+    SetHex(str.c_str());
+}
+
+template <unsigned int BITS>
+std::string base_blob<BITS>::ToString() const
+{
+    return (GetHex());
+}
+
+// Explicit instantiations for base_blob<160>
+template base_blob<160>::base_blob(const std::vector<unsigned char>&);
+template std::string base_blob<160>::GetHex() const;
+template std::string base_blob<160>::ToString() const;
+template void base_blob<160>::SetHex(const char*);
+template void base_blob<160>::SetHex(const std::string&);
+
+// Explicit instantiations for base_blob<256>
+template base_blob<256>::base_blob(const std::vector<unsigned char>&);
+template std::string base_blob<256>::GetHex() const;
+template std::string base_blob<256>::ToString() const;
+template void base_blob<256>::SetHex(const char*);
+template void base_blob<256>::SetHex(const std::string&);
+
+static void inline HashMix(uint32_t& a, uint32_t& b, uint32_t& c)
+{
+    // Taken from lookup3, by Bob Jenkins.
+    a -= c;
+    a ^= ((c << 4) | (c >> 28));
+    c += b;
+    b -= a;
+    b ^= ((a << 6) | (a >> 26));
+    a += c;
+    c -= b;
+    c ^= ((b << 8) | (b >> 24));
+    b += a;
+    a -= c;
+    a ^= ((c << 16) | (c >> 16));
+    c += b;
+    b -= a;
+    b ^= ((a << 19) | (a >> 13));
+    a += c;
+    c -= b;
+    c ^= ((b << 4) | (b >> 28));
+    b += a;
+}
+
+static void inline HashFinal(uint32_t& a, uint32_t& b, uint32_t& c)
+{
+    // Taken from lookup3, by Bob Jenkins.
+    c ^= b;
+    c -= ((b << 14) | (b >> 18));
+    a ^= c;
+    a -= ((c << 11) | (c >> 21));
+    b ^= a;
+    b -= ((a << 25) | (a >> 7));
+    c ^= b;
+    c -= ((b << 16) | (b >> 16));
+    a ^= c;
+    a -= ((c << 4) | (c >> 28));
+    b ^= a;
+    b -= ((a << 14) | (a >> 18));
+    c ^= b;
+    c -= ((b << 24) | (b >> 8));
+}
+
+uint64_t uint256::GetHash(const uint256& salt) const
+{
+    uint32_t a, b, c;
+    const uint32_t *pn = (const uint32_t*)data;
+    const uint32_t *salt_pn = (const uint32_t*)salt.data;
+    a = b = c = 0xdeadbeef + WIDTH;
+
+    a += pn[0] ^ salt_pn[0];
+    b += pn[1] ^ salt_pn[1];
+    c += pn[2] ^ salt_pn[2];
+    HashMix(a, b, c);
+    a += pn[3] ^ salt_pn[3];
+    b += pn[4] ^ salt_pn[4];
+    c += pn[5] ^ salt_pn[5];
+    HashMix(a, b, c);
+    a += pn[6] ^ salt_pn[6];
+    b += pn[7] ^ salt_pn[7];
+    HashFinal(a, b, c);
+
+    return ((((uint64_t)b) << 32) | c);
+}
+
 uint256 PRF_addr_a_pk(const uint252& a_sk);
 uint256 PRF_addr_sk_enc(const uint252& a_sk);
 uint256 PRF_nf(const uint252& a_sk, const uint256& rho);
@@ -85,6 +409,7 @@ uint256 PRF_rho(const uint252& phi, size_t i0, const uint256& h_sig);
 
 uint256 random_uint256();
 uint252 random_uint252();
+uint160 random_uint160();
 
 #define NOTEENCRYPTION_AUTH_BYTES 16
 
@@ -171,9 +496,6 @@ public:
     merkle_authentication_path_variable<FieldT, HashT> path_var;
     pb_variable_array<FieldT> address_bits_va;
     merkle_tree_check_read_gadget<FieldT, HashT> ml;
-    std::string r1csPath;
-    std::string vkPath;
-    std::string pkPath;
 
     guneromembership_gadget()
         : gadget<FieldT>(pb, "guneromembership_gadget")
@@ -189,10 +511,6 @@ public:
         //digest_variable<FieldT> leaf_digest(pb, digest_len, "input_block");
         //digest_variable<FieldT> root_digest(pb, digest_len, "output_digest");
         //merkle_tree_check_read_gadget<FieldT, HashT> ml(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml");
-
-        r1csPath = "r1cs.bin";
-        vkPath = "vk.bin";
-        pkPath = "pk.bin";
     }
 
     ~guneromembership_gadget()
@@ -200,7 +518,10 @@ public:
 
     }
 
-    void generate_r1cs_constraints()
+    void generate_r1cs_constraints(
+        const std::string& r1csPath,
+        const std::string& pkPath,
+        const std::string& vkPath)
     {
         libff::print_header("Gunero constraints");
 
@@ -211,10 +532,12 @@ public:
 
         saveToFile(r1csPath, constraint_system);
 
+        printf("\n"); libff::print_indent(); libff::print_mem("after generator"); libff::print_time("after generator");
+
         r1cs_ppzksnark_keypair<BaseT> keypair = r1cs_ppzksnark_generator<BaseT>(constraint_system);
 
-        saveToFile(vkPath, keypair.vk);
         saveToFile(pkPath, keypair.pk);
+        saveToFile(vkPath, keypair.vk);
 
         printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
     }
@@ -223,9 +546,13 @@ public:
         size_t address,
         libff::bit_vector& address_bits,
         libff::bit_vector& leaf,
-        std::vector<merkle_authentication_node>& path)
+        std::vector<merkle_authentication_node>& path,
+        const std::string& pkPath)
     {
         libff::print_header("Gunero witness (proof)");
+
+        r1cs_ppzksnark_proving_key<BaseT> pk;
+        loadFromFile(pkPath, pk);
 
         address_bits_va.fill_with_bits(pb, address_bits);
         assert(address_bits_va.get_field_element_from_bits(pb).as_ulong() == address);
@@ -233,13 +560,19 @@ public:
         path_var.generate_r1cs_witness(address, path);
         ml.generate_r1cs_witness();
 
+        r1cs_ppzksnark_primary_input<BaseT> primary_input = CARP;
+        r1cs_ppzksnark_auxiliary_input<BaseT> auxiliary_input = CARP;
+
+        r1cs_ppzksnark_proof<BaseT> proof = r1cs_ppzksnark_prover(pk, primary_input, auxiliary_input);
+
         printf("\n"); libff::print_indent(); libff::print_mem("after witness (proof)"); libff::print_time("after witness (proof)");
     }
 
     void verify(
         libff::bit_vector& address_bits,
         libff::bit_vector& leaf,
-        libff::bit_vector& root
+        libff::bit_vector& root,
+        const std::string& vkPath
     )
     {
         libff::print_header("Gunero verify");
@@ -324,9 +657,9 @@ void Gunero_test_merkle_tree_check_read_gadget()
     libff::start_profiling();
     //const size_t digest_len = HashT::get_digest_len();
 
-    // std::string r1csPath = "r1cs.bin";
-    // std::string vkPath = "vk.bin";
-    // std::string pkPath = "pk.bin";
+    std::string r1csPath = "r1cs.bin";
+    std::string vkPath = "vk.bin";
+    std::string pkPath = "pk.bin";
 
     /* generate circuit */
     libff::print_header("Gunero Generator");
@@ -344,8 +677,6 @@ void Gunero_test_merkle_tree_check_read_gadget()
     // path_var.generate_r1cs_constraints();
     // ml.generate_r1cs_constraints();
 
-    printf("\n"); libff::print_indent(); libff::print_mem("after generator"); libff::print_time("after generator");
-
     // {/* produce constraints */
     //     libff::print_header("Gunero constraints");
     //     const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
@@ -359,7 +690,8 @@ void Gunero_test_merkle_tree_check_read_gadget()
 
     //     printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
     // }
-    gunero.generate_r1cs_constraints();
+
+    gunero.generate_r1cs_constraints(r1csPath, pkPath, vkPath);
 
     /* prepare test variables */
     libff::print_header("Gunero prepare test variables");
@@ -420,7 +752,7 @@ void Gunero_test_merkle_tree_check_read_gadget()
     // const size_t expected_constraints = merkle_tree_check_read_gadget<FieldT, HashT>::expected_constraints(tree_depth);
     // assert(num_constraints == expected_constraints);
     // printf("\n"); libff::print_indent(); libff::print_mem("after verify"); libff::print_time("after verify");
-    gunero.verify(address_bits, leaf, root);
+    gunero.verify(address_bits, leaf, root, vkPath);
 
     libff::clear_profiling_counters();
 }
