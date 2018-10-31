@@ -1,4 +1,12 @@
 #include <fstream>
+
+inline void assert_except(bool condition) {
+    if (!condition) {
+        throw std::runtime_error("Assertion failed.");
+    }
+}
+
+#include <mutex>
 //#include <libff/common/default_types/ec_pp.hpp> 
 #include <libsnark/common/default_types/r1cs_gg_ppzksnark_pp.hpp>
 #include <libsnark/common/default_types/r1cs_gg_ppzksnark_pp.hpp>
@@ -22,7 +30,7 @@
 #include <libff/algebra/curves/bn128/bn128_pp.hpp>
 #endif
 #ifdef ALT_BN128
-#include <libff/algebra/curves/alt_bn128/alt_bn128_init.hpp>
+// #include <libff/algebra/curves/alt_bn128/alt_bn128_init.hpp>
 #include <libff/algebra/curves/alt_bn128/alt_bn128_pp.hpp>
 #endif
 #include <libff/algebra/curves/edwards/edwards_pp.hpp>
@@ -39,6 +47,37 @@
 
 #include "serialize.h"
 #include "crypto/sha256.h"
+
+#ifdef CURVE_BN128
+    // //bn128_pp
+    // typedef libff::Fr<libff::bn128_pp> FieldT;
+    // typedef libff::bn128_pp BaseT;
+#endif
+
+#ifdef ALT_BN128
+    //alt_bn128_pp
+    typedef libff::Fr<libff::alt_bn128_pp> FieldT;
+    typedef libff::alt_bn128_pp BaseT;
+#endif
+
+#ifdef CURVE_BN128
+// typedef libff::bn128_pp::G1_type curve_G1;
+// typedef libff::bn128_pp::G2_type curve_G2;
+// typedef libff::bn128_pp::GT_type curve_GT;
+// typedef libff::bn128_pp::Fp_type curve_Fr;
+// typedef libff::bn128_pp::Fq_type curve_Fq;
+// typedef libff::bn128_pp::Fqe_type curve_Fq2;
+#endif
+
+#ifdef ALT_BN128
+typedef libff::alt_bn128_pp::G1_type curve_G1;
+typedef libff::alt_bn128_pp::G2_type curve_G2;
+typedef libff::alt_bn128_pp::GT_type curve_GT;
+typedef libff::alt_bn128_pp::Fp_type curve_Fr;
+typedef libff::alt_bn128_pp::Fq_type curve_Fq;
+typedef libff::alt_bn128_pp::Fqe_type curve_Fq2;
+#endif
+
 
 using namespace libsnark;
 //using namespace libzcash;
@@ -144,6 +183,26 @@ public:
     void Unserialize(Stream& s, int nType, int nVersion)
     {
         s.read((char*)data, sizeof(data));
+    }
+
+    friend std::ostream& operator<<(std::ostream &out, const base_blob<BITS> &a)
+    {
+        for(int i = 0; i < WIDTH; i++)
+        {
+            out << a.data[i];
+        }
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, base_blob<BITS> &a)
+    {
+        for(int i = 0; i < WIDTH; i++)
+        {
+            in >> a.data[i];
+        }
+
+        return in;
     }
 };
 
@@ -592,37 +651,37 @@ public:
         printf("\n"); libff::print_indent(); libff::print_mem("after constraints"); libff::print_time("after constraints");
     }
 
-    // static r1cs_primary_input<FieldT> witness_map(
-    //     const uint256& rt,
-    //     const uint256& h_sig,
-    //     const uint256& macs,
-    //     const uint256& nullifiers,
-    //     const uint256& commitments,
-    //     uint64_t vpub_old,
-    //     uint64_t vpub_new
-    // ) {
-    //     std::vector<bool> verify_inputs;
+    static r1cs_primary_input<FieldT> witness_map(
+        // const uint256& rt,
+        // const uint256& h_sig,
+        // const uint256& macs,
+        // const uint256& nullifiers,
+        // const uint256& commitments,
+        // uint64_t vpub_old,
+        // uint64_t vpub_new
+    ) {
+        // std::vector<bool> verify_inputs;
 
-    //     insert_uint256(verify_inputs, rt);
-    //     insert_uint256(verify_inputs, h_sig);
+        // insert_uint256(verify_inputs, rt);
+        // insert_uint256(verify_inputs, h_sig);
         
-    //     // for (size_t i = 0; i < NumInputs; i++) {
-    //         insert_uint256(verify_inputs, nullifiers);
-    //         insert_uint256(verify_inputs, macs);
-    //     // }
+        // // for (size_t i = 0; i < NumInputs; i++) {
+        //     insert_uint256(verify_inputs, nullifiers);
+        //     insert_uint256(verify_inputs, macs);
+        // // }
 
-    //     // for (size_t i = 0; i < NumOutputs; i++) {
-    //         insert_uint256(verify_inputs, commitments);
-    //     // }
+        // // for (size_t i = 0; i < NumOutputs; i++) {
+        //     insert_uint256(verify_inputs, commitments);
+        // // }
 
-    //     insert_uint64(verify_inputs, vpub_old);
-    //     insert_uint64(verify_inputs, vpub_new);
+        // insert_uint64(verify_inputs, vpub_old);
+        // insert_uint64(verify_inputs, vpub_new);
 
-    //     assert(verify_inputs.size() == verifying_input_bit_size());
-    //     auto verify_field_elements = libff::pack_bit_vector_into_field_element_vector<FieldT>(verify_inputs);
-    //     assert(verify_field_elements.size() == verifying_field_element_size());
-    //     return verify_field_elements;
-    // }
+        // assert(verify_inputs.size() == verifying_input_bit_size());
+        // auto verify_field_elements = libff::pack_bit_vector_into_field_element_vector<FieldT>(verify_inputs);
+        // assert(verify_field_elements.size() == verifying_field_element_size());
+        // return verify_field_elements;
+    }
 
     void generate_r1cs_witness(
         const size_t address,
@@ -830,6 +889,11 @@ void Gunero_test_merkle_tree_check_read_gadget()
 const unsigned char G1_PREFIX_MASK = 0x02;
 const unsigned char G2_PREFIX_MASK = 0x0a;
 
+void static inline WriteBE64(unsigned char* ptr, uint64_t x)
+{
+    *((uint64_t*)ptr) = htobe64(x);
+}
+
 // Element in the base field
 class Fq {
 private:
@@ -861,7 +925,81 @@ public:
     {
         return !(a == b);
     }
+
+    friend std::ostream& operator<<(std::ostream &out, const Fq &a)
+    {
+        out << a.data;
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, Fq &a)
+    {
+        in >> a.data;
+
+        return in;
+    }
 };
+
+// FE2IP as defined in the protocol spec and IEEE Std 1363a-2004.
+libff::bigint<8> fq2_to_bigint(const curve_Fq2 &e)
+{
+    auto modq = curve_Fq::field_char();
+    auto c0 = e.c0.as_bigint();
+    auto c1 = e.c1.as_bigint();
+
+    libff::bigint<8> temp = c1 * modq;
+    temp += c0;
+    return temp;
+}
+
+// Writes a bigint in big endian
+template<mp_size_t LIMBS>
+void write_bigint(base_blob<8 * LIMBS * sizeof(mp_limb_t)> &blob, const libff::bigint<LIMBS> &val)
+{
+    auto ptr = blob.begin();
+    for (ssize_t i = LIMBS-1; i >= 0; i--, ptr += 8) {
+        WriteBE64(ptr, val.data[i]);
+    }
+}
+
+uint64_t static inline ReadBE64(const unsigned char* ptr)
+{
+    return be64toh(*((uint64_t*)ptr));
+}
+
+// Reads a bigint from big endian
+template<mp_size_t LIMBS>
+libff::bigint<LIMBS> read_bigint(const base_blob<8 * LIMBS * sizeof(mp_limb_t)> &blob)
+{
+    libff::bigint<LIMBS> ret;
+
+    auto ptr = blob.begin();
+
+    for (ssize_t i = LIMBS-1; i >= 0; i--, ptr += 8) {
+        ret.data[i] = ReadBE64(ptr);
+    }
+
+    return ret;
+}
+
+template<typename libsnark_Fq>
+Fq::Fq(libsnark_Fq element) : data()
+{
+    write_bigint<4>(data, element.as_bigint());
+}
+
+template<>
+curve_Fq Fq::to_libsnark_fq() const
+{
+    auto element_bigint = read_bigint<4>(data);
+
+    // Check that the integer is smaller than the modulus
+    auto modq = curve_Fq::field_char();
+    element_bigint.limit(modq, "element is not in Fq");
+
+    return curve_Fq(element_bigint);
+}
 
 // Element in the extension field
 class Fq2 {
@@ -894,7 +1032,40 @@ public:
     {
         return !(a == b);
     }
+
+    friend std::ostream& operator<<(std::ostream &out, const Fq2 &a)
+    {
+        out << a.data;
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, Fq2 &a)
+    {
+        in >> a.data;
+
+        return in;
+    }
 };
+
+template<typename libsnark_Fq2>
+Fq2::Fq2(libsnark_Fq2 element) : data()
+{
+    write_bigint<8>(data, fq2_to_bigint(element));
+}
+
+template<>
+curve_Fq2 Fq2::to_libsnark_fq2() const
+{
+    libff::bigint<4> modq = curve_Fq::field_char();
+    libff::bigint<8> combined = read_bigint<8>(data);
+    libff::bigint<5> res;
+    libff::bigint<4> c0;
+    libff::bigint<8>::div_qr(res, c0, combined, modq);
+    libff::bigint<4> c1 = res.shorten(modq, "element is not in Fq2");
+
+    return curve_Fq2(curve_Fq(c0), curve_Fq(c1));
+}
 
 // Compressed point in G1
 class CompressedG1 {
@@ -944,6 +1115,22 @@ public:
     {
         return !(a == b);
     }
+
+    friend std::ostream& operator<<(std::ostream &out, const CompressedG1 &a)
+    {
+        out << a.y_lsb;
+        out << a.x;
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, CompressedG1 &a)
+    {
+        in >> a.y_lsb;
+        in >> a.x;
+
+        return in;
+    }
 };
 
 template<typename libsnark_G1>
@@ -957,6 +1144,32 @@ CompressedG1::CompressedG1(libsnark_G1 point)
 
     x = Fq(point.X);
     y_lsb = point.Y.as_bigint().data[0] & 1;
+}
+
+template<>
+curve_G1 CompressedG1::to_libsnark_g1() const
+{
+    curve_Fq x_coordinate = x.to_libsnark_fq<curve_Fq>();
+
+#ifdef ALT_BN128
+    // y = +/- sqrt(x^3 + b)
+    auto y_coordinate = ((x_coordinate.squared() * x_coordinate) + libff::alt_bn128_coeff_b).sqrt();
+#else
+    CARP();
+#endif
+
+    if ((y_coordinate.as_bigint().data[0] & 1) != y_lsb) {
+        y_coordinate = -y_coordinate;
+    }
+
+    curve_G1 r = curve_G1::one();
+    r.X = x_coordinate;
+    r.Y = y_coordinate;
+    r.Z = curve_Fq::one();
+
+    assert(r.is_well_formed());
+
+    return r;
 }
 
 // Compressed point in G2
@@ -1007,22 +1220,23 @@ public:
     {
         return !(a == b);
     }
+
+    friend std::ostream& operator<<(std::ostream &out, const CompressedG2 &a)
+    {
+        out << a.y_gt;
+        out << a.x;
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, CompressedG2 &a)
+    {
+        in >> a.y_gt;
+        in >> a.x;
+
+        return in;
+    }
 };
-
-typedef libff::alt_bn128_pp curve_pp;
-typedef libff::alt_bn128_pp::Fq_type curve_Fq;
-typedef libff::alt_bn128_pp::Fqe_type curve_Fq2;
-
-libff::bigint<8> fq2_to_bigint(const curve_Fq2 &e)
-{
-    auto modq = curve_Fq::field_char();
-    auto c0 = e.c0.as_bigint();
-    auto c1 = e.c1.as_bigint();
-
-    libff::bigint<8> temp = c1 * modq;
-    temp += c0;
-    return temp;
-}
 
 template<typename libsnark_G2>
 CompressedG2::CompressedG2(libsnark_G2 point)
@@ -1037,6 +1251,40 @@ CompressedG2::CompressedG2(libsnark_G2 point)
     y_gt = fq2_to_bigint(point.Y) > fq2_to_bigint(-(point.Y));
 }
 
+template<>
+curve_G2 CompressedG2::to_libsnark_g2() const
+{
+    auto x_coordinate = x.to_libsnark_fq2<curve_Fq2>();
+
+    // y = +/- sqrt(x^3 + b)
+#ifdef ALT_BN128
+    auto y_coordinate = ((x_coordinate.squared() * x_coordinate) + libff::alt_bn128_twist_coeff_b).sqrt();
+#else
+    CARP();
+#endif
+    auto y_coordinate_neg = -y_coordinate;
+
+    if ((fq2_to_bigint(y_coordinate) > fq2_to_bigint(y_coordinate_neg)) != y_gt) {
+        y_coordinate = y_coordinate_neg;
+    }
+
+    curve_G2 r = curve_G2::one();
+    r.X = x_coordinate;
+    r.Y = y_coordinate;
+    r.Z = curve_Fq2::one();
+
+    assert(r.is_well_formed());
+
+#ifdef ALT_BN128
+    if (libff::alt_bn128_modulus_r * r != curve_G2::zero()) {
+#else
+    CARP(); {
+#endif
+        throw std::runtime_error("point is not in G2");
+    }
+
+    return r;
+}
 
 // Compressed zkSNARK proof
 class ZCProof {
@@ -1096,6 +1344,34 @@ public:
     {
         return !(a == b);
     }
+
+    friend std::ostream& operator<<(std::ostream &out, const ZCProof &proof)
+    {
+        out << proof.g_A;
+        out << proof.g_A_prime;
+        out << proof.g_B;
+        out << proof.g_B_prime;
+        out << proof.g_C;
+        out << proof.g_C_prime;
+        out << proof.g_K;
+        out << proof.g_H;
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, ZCProof &proof)
+    {
+        in >> proof.g_A;
+        in >> proof.g_A_prime;
+        in >> proof.g_B;
+        in >> proof.g_B_prime;
+        in >> proof.g_C;
+        in >> proof.g_C_prime;
+        in >> proof.g_K;
+        in >> proof.g_H;
+
+        return in;
+    }
 };
 
 template<typename libsnark_proof>
@@ -1109,6 +1385,23 @@ ZCProof::ZCProof(const libsnark_proof& proof)
     g_C_prime = CompressedG1(proof.g_C.h);
     g_K = CompressedG1(proof.g_K);
     g_H = CompressedG1(proof.g_H);
+}
+
+template<>
+r1cs_ppzksnark_proof<BaseT> ZCProof::to_libsnark_proof() const
+{
+    r1cs_ppzksnark_proof<BaseT> proof;
+
+    proof.g_A.g = g_A.to_libsnark_g1<curve_G1>();
+    proof.g_A.h = g_A_prime.to_libsnark_g1<curve_G1>();
+    proof.g_B.g = g_B.to_libsnark_g2<curve_G2>();
+    proof.g_B.h = g_B_prime.to_libsnark_g1<curve_G1>();
+    proof.g_C.g = g_C.to_libsnark_g1<curve_G1>();
+    proof.g_C.h = g_C_prime.to_libsnark_g1<curve_G1>();
+    proof.g_K = g_K.to_libsnark_g1<curve_G1>();
+    proof.g_H = g_H.to_libsnark_g1<curve_G1>();
+
+    return proof;
 }
 
 class ProofVerifier {
@@ -1145,6 +1438,38 @@ public:
         const Proof& p
     );
 };
+
+template<>
+bool ProofVerifier::check(
+    const r1cs_ppzksnark_verification_key<BaseT>& vk,
+    const r1cs_ppzksnark_processed_verification_key<BaseT>& pvk,
+    const r1cs_ppzksnark_primary_input<BaseT>& primary_input,
+    const r1cs_ppzksnark_proof<BaseT>& proof
+)
+{
+    if (perform_verification) {
+        return r1cs_ppzksnark_online_verifier_strong_IC<BaseT>(pvk, primary_input, proof);
+    } else {
+        return true;
+    }
+}
+
+std::once_flag init_public_params_once_flag;
+
+void initialize_curve_params()
+{
+    std::call_once (init_public_params_once_flag, BaseT::init_public_params);
+}
+
+ProofVerifier ProofVerifier::Strict() {
+    initialize_curve_params();
+    return ProofVerifier(true);
+}
+
+ProofVerifier ProofVerifier::Disabled() {
+    initialize_curve_params();
+    return ProofVerifier(false);
+}
 
 class ViewingKey : public uint256 {
 public:
@@ -1495,6 +1820,8 @@ public:
 
         protoboard<FieldT> pb;
         {
+            libff::print_header("Gunero guneromembership_gadget.load_r1cs_constraints()");
+
             guneromembership_gadget<FieldT, BaseT, HashT, tree_depth> g(pb);
             g.load_r1cs_constraints();
             g.generate_r1cs_witness(
@@ -1503,6 +1830,8 @@ public:
                 leaf,
                 path
             );
+
+            printf("\n"); libff::print_indent(); libff::print_mem("after guneromembership_gadget.load_r1cs_constraints()"); libff::print_time("after guneromembership_gadget.load_r1cs_constraints()");
         }
 
         // The constraint system must be satisfied or there is an unimplemented
@@ -1521,18 +1850,23 @@ public:
 
         printf("\n"); libff::print_indent(); libff::print_mem("after witness (proof)"); libff::print_time("after witness (proof)");
 
-        return ZCProof(r1cs_ppzksnark_prover<BaseT>(
-            pk,
-            primary_input,
-            aux_input
-            // ,
-            // pb.constraint_system
-        ));
+        return ZCProof();
+
+        // return ZCProof(r1cs_ppzksnark_prover<BaseT>(
+        //     pk,
+        //     primary_input,
+        //     aux_input
+        //     // ,
+        //     // pb.constraint_system
+        // ));
     }
 
     bool verify(
-        // const ZCProof& proof,
-        // ProofVerifier& verifier,
+        const ZCProof& proof,
+        ProofVerifier& verifier,
+        const std::string& vkPath
+
+
         // const uint256& pubKeyHash,
         // const uint256& randomSeed,
         // const uint256& macs,
@@ -1542,52 +1876,59 @@ public:
         // uint64_t vpub_new,
         // const uint256& rt
     ) {
+        libff::print_header("Gunero verify");
+
+        r1cs_ppzksnark_verification_key<BaseT> vk;
+        loadFromFile(vkPath, vk);
+
+        r1cs_ppzksnark_processed_verification_key<BaseT> vk_precomp = r1cs_ppzksnark_verifier_process_vk(vk);
+
         // if (!vk || !vk_precomp) {
-        //     throw std::runtime_error("JoinSplit verifying key not loaded");
+        //     throw std::runtime_error("GuneroMembershipCircuit verifying key not loaded");
         // }
 
-        // try {
-        //     auto r1cs_proof = proof.to_libsnark_proof<r1cs_ppzksnark_proof<BaseT>>();
+        try {
+            auto r1cs_proof = proof.to_libsnark_proof<r1cs_ppzksnark_proof<BaseT>>();
 
-        //     uint256 h_sig = this->h_sig(randomSeed, nullifiers, pubKeyHash);
+            // uint256 h_sig = this->h_sig(randomSeed, nullifiers, pubKeyHash);
 
-        //     auto witness = guneromembership_gadget<FieldT, BaseT, HashT, tree_depth>::witness_map(
-        //         rt,
-        //         h_sig,
-        //         macs,
-        //         nullifiers,
-        //         commitments,
-        //         vpub_old,
-        //         vpub_new
-        //     );
+            auto witness = guneromembership_gadget<FieldT, BaseT, HashT, tree_depth>::witness_map(
+                // rt,
+                // h_sig,
+                // macs,
+                // nullifiers,
+                // commitments,
+                // vpub_old,
+                // vpub_new
+            );
 
-        //     return verifier.check(
-        //         *vk,
-        //         *vk_precomp,
-        //         witness,
-        //         r1cs_proof
-        //     );
-        // } catch (...) {
-        //     return false;
-        // }
+            printf("\n"); libff::print_indent(); libff::print_mem("after verify"); libff::print_time("after verify");
 
-        return false;
+            return verifier.check(
+                vk,
+                vk_precomp,
+                witness,
+                r1cs_proof
+            );
+        } catch (...) {
+            return false;
+        }
     }
 };
 
 int main () {
     libff::start_profiling();
 
+#ifdef CURVE_BN128
     // //bn128_pp
     // libff::bn128_pp::init_public_params();
+#endif
 
+#ifdef ALT_BN128
     //alt_bn128_pp
     libff::init_alt_bn128_params();
+#endif
 
-    // typedef libff::Fr<libff::bn128_pp> FieldT;
-    // typedef libff::bn128_pp BaseT;
-    typedef libff::Fr<libff::alt_bn128_pp> FieldT;
-    typedef libff::alt_bn128_pp BaseT;
     // Gunero_test_merkle_tree_check_read_gadget<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT>, 64>();
 
     GuneroMembershipCircuit<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT>, 64> gmc;
@@ -1595,19 +1936,48 @@ int main () {
     std::string r1csPath = "r1cs.bin";
     std::string pkPath = "pk.bin";
     std::string vkPath = "vk.bin";
+    std::string proofPath = "proof.bin";
 
     /* generate circuit */
     libff::print_header("Gunero Generator");
 
-    gmc.generate(r1csPath, pkPath, vkPath);
+    if (0)
+    {
+        gmc.generate(r1csPath, pkPath, vkPath);
+    }
+    else if (0)
+    {
+        size_t address;
+        libff::bit_vector address_bits;
+        libff::bit_vector leaf;
+        std::vector<merkle_authentication_node> path;
+        gmc.makeTestVariables(address, address_bits, leaf, path);
 
-    size_t address;
-    libff::bit_vector address_bits;
-    libff::bit_vector leaf;
-    std::vector<merkle_authentication_node> path;
-    gmc.makeTestVariables(address, address_bits, leaf, path);
+        ZCProof proof = gmc.prove(address, address_bits, leaf, path, pkPath);
 
-    gmc.prove(address, address_bits, leaf, path, pkPath);
+        saveToFile(proofPath, proof);
+    }
+    else
+    {
+        ZCProof proof;
+        loadFromFile(proofPath, proof);
+
+        ProofVerifier verifierEnabled = ProofVerifier::Strict();
+        // ProofVerifier verifierDisabled = ProofVerifier::Disabled();
+
+        bool verified = gmc.verify(proof, verifierEnabled, vkPath);
+
+        printf("verified: ");
+        if (verified)
+        {
+            printf("true");
+        }
+        else
+        {
+            printf("false");
+        }
+        printf("\n");
+    }
 
     return 0;
 }
