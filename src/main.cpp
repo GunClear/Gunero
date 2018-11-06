@@ -83,6 +83,11 @@ using namespace libsnark;
 //using namespace libzcash;
 //using namespace gunero;
 
+std::ostream& operator<<(std::ostream &out, const libff::bit_vector &a);
+std::istream& operator>>(std::istream &in, libff::bit_vector &a);
+std::ostream& operator<<(std::ostream &out, const std::vector<libff::bit_vector> &a);
+std::istream& operator>>(std::istream &in, std::vector<libff::bit_vector> &a);
+
 const signed char p_util_hexdigit[256] =
 { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
   -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -557,16 +562,136 @@ public:
 typedef NoteEncryption<ZC_NOTEPLAINTEXT_SIZE> ZCNoteEncryption;
 typedef NoteDecryption<ZC_NOTEPLAINTEXT_SIZE> ZCNoteDecryption;
 
+// Convert boolean vector (big endian) to integer
+uint64_t convertVectorToInt(const std::vector<bool>& v) {
+    if (v.size() > 64) {
+        throw std::length_error ("boolean vector can't be larger than 64 bits");
+    }
+
+    uint64_t result = 0;
+    for (size_t i=0; i<v.size();i++) {
+        if (v.at(i)) {
+            result |= (uint64_t)1 << ((v.size() - 1) - i);
+        }
+    }
+
+    return result;
+}
+
+int div_ceil(int numerator, int denominator)
+{
+    std::div_t res = std::div(numerator, denominator);
+    return res.rem ? (res.quot + 1) : res.quot;
+}
+
+class MerklePath {
+public:
+    std::vector<std::vector<bool>> authentication_path;
+    std::vector<bool> index;
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(authentication_path);
+        READWRITE(index);
+    }
+
+    MerklePath() { }
+
+    MerklePath(std::vector<std::vector<bool>> authentication_path, std::vector<bool> index)
+    : authentication_path(authentication_path), index(index) { }
+
+
+    friend std::ostream& operator<<(std::ostream &out, const MerklePath &a)
+    {
+        out << a.authentication_path;
+        out << a.index;
+
+        return out;
+    }
+
+    friend std::istream& operator>>(std::istream &in, MerklePath &a)
+    {
+        in >> a.authentication_path;
+        in >> a.index;
+
+        return in;
+    }
+};
+
+
+template<typename FieldT, typename HashT, size_t tree_depth>
+class gunero_merkle_tree_gadget : gadget<FieldT> {
+private:
+    pb_variable_array<FieldT> positions;
+    std::shared_ptr<merkle_authentication_path_variable<FieldT, HashT>> authvars;
+    std::shared_ptr<merkle_tree_check_read_gadget<FieldT, HashT>> auth;
+
+public:
+    gunero_merkle_tree_gadget(
+        protoboard<FieldT>& pb,
+        digest_variable<FieldT> leaf,
+        digest_variable<FieldT> root,
+        const pb_variable<FieldT>& enforce,
+        const std::string &annotation_prefix
+    ) : gadget<FieldT>(pb, annotation_prefix) {
+        positions.allocate(pb, tree_depth);
+        authvars.reset(new merkle_authentication_path_variable<FieldT, HashT>(
+            pb, tree_depth, "auth"
+        ));
+        auth.reset(new merkle_tree_check_read_gadget<FieldT, HashT>(
+            pb,
+            tree_depth,
+            positions,
+            leaf,
+            root,
+            *authvars,
+            enforce,
+            "auth_read"
+        ));
+    }
+
+    void generate_r1cs_constraints() {
+        for (size_t i = 0; i < tree_depth; i++) {
+            // TODO: This might not be necessary, and doesn't
+            // appear to be done in libsnark's tests, but there
+            // is no documentation, so let's do it anyway to
+            // be safe.
+            generate_boolean_r1cs_constraint<FieldT>(
+                this->pb,
+                positions[i],
+                "boolean_positions"
+            );
+        }
+
+        authvars->generate_r1cs_constraints();
+        auth->generate_r1cs_constraints();
+    }
+
+    void generate_r1cs_witness(const MerklePath& path) {
+        // TODO: Change libsnark so that it doesn't require this goofy
+        // number thing in its API.
+        size_t path_index = convertVectorToInt(path.index);
+
+        positions.fill_with_bits_of_ulong(this->pb, path_index);
+
+        authvars->generate_r1cs_witness(path_index, path.authentication_path);
+        auth->generate_r1cs_witness();
+    }
+};
+
 template<typename FieldT, typename BaseT, typename HashT, size_t tree_depth>
 class guneromembership_gadget : public gadget<FieldT> {
 public:
     const size_t digest_len;
-    protoboard<FieldT> mpb;
-    digest_variable<FieldT> leaf_digest;
+    // protoboard<FieldT> mpb;
     digest_variable<FieldT> root_digest;
-    merkle_authentication_path_variable<FieldT, HashT> path_var;
-    pb_variable_array<FieldT> address_bits_va;
-    merkle_tree_check_read_gadget<FieldT, HashT> ml;
+    digest_variable<FieldT> leaf_digest;
+    // merkle_authentication_path_variable<FieldT, HashT> path_var;
+    // pb_variable_array<FieldT> address_bits_va;
+    //merkle_tree_check_read_gadget<FieldT, HashT> ml;
+    gunero_merkle_tree_gadget<FieldT, HashT, tree_depth> ml;
 
     // guneromembership_gadget()
     //     : gadget<FieldT>(pb, "guneromembership_gadget")
@@ -585,14 +710,22 @@ public:
     // }
     guneromembership_gadget(protoboard<FieldT>& pb)
         : gadget<FieldT>(pb, "guneromembership_gadget")
-        , mpb(pb)
         , digest_len(HashT::get_digest_len())
-        , leaf_digest(pb, digest_len, "input_block")
         , root_digest(pb, digest_len, "output_digest")
-        , path_var(pb, tree_depth, "path_var")
-        , address_bits_va(pb, tree_depth, "address_bits")
-        , ml(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml")
+        // , mpb(pb)
+        , leaf_digest(pb, digest_len, "input_block")
+        // , path_var(pb, tree_depth, "path_var")
+        // , address_bits_va(pb, tree_depth, "address_bits")
+        // , ml(pb, tree_depth, address_bits_va, leaf_digest, root_digest, path_var, ONE, "ml")
+        , ml(pb, leaf_digest, root_digest, /*path_var,*/ ONE, "ml")
     {
+        // The verification inputs are all bit-strings of various
+        // lengths (256-bit digests and 64-bit integers) and so we
+        // pack them into as few field elements as possible. (The
+        // more verification inputs you have, the more expensive
+        // verification is.)
+        pb.set_input_sizes(verifying_field_element_size());
+
         // pb_variable_array<FieldT> address_bits_va;
         // address_bits_va.allocate(pb, tree_depth, "address_bits");
         //digest_variable<FieldT> leaf_digest(pb, digest_len, "input_block");
@@ -605,11 +738,37 @@ public:
 
     }
 
+    static size_t verifying_input_bit_size() {
+        size_t acc = 0;
+
+        // acc += 256; // the merkle root (anchor)
+        // acc += 256; // h_sig
+        // for (size_t i = 0; i < NumInputs; i++) {
+        //     acc += 256; // nullifier
+        //     acc += 256; // mac
+        // }
+        // for (size_t i = 0; i < NumOutputs; i++) {
+        //     acc += 256; // new commitment
+        // }
+        // acc += 64; // vpub_old
+        // acc += 64; // vpub_new
+
+        // return acc;
+
+        acc += HashT::get_digest_len(); // the merkle root (anchor) => libff::bit_vector root(digest_len);
+
+        return acc;
+    }
+
+    static size_t verifying_field_element_size() {
+        return div_ceil(verifying_input_bit_size(), FieldT::capacity());
+    }
+
     void load_r1cs_constraints()
     {
         libff::print_header("Gunero load constraints");
 
-        path_var.generate_r1cs_constraints();
+        // path_var.generate_r1cs_constraints();
         ml.generate_r1cs_constraints();
 
         // const r1cs_constraint_system<FieldT> constraint_system = pb.get_constraint_system();
@@ -634,7 +793,7 @@ public:
     {
         libff::print_header("Gunero constraints");
 
-        path_var.generate_r1cs_constraints();
+        // path_var.generate_r1cs_constraints();
         ml.generate_r1cs_constraints();
 
         const r1cs_constraint_system<FieldT> constraint_system = this->pb.get_constraint_system();
@@ -684,17 +843,18 @@ public:
     }
 
     void generate_r1cs_witness(
-        const size_t address,
-        const libff::bit_vector& address_bits,
-        const libff::bit_vector& leaf,
-        const std::vector<merkle_authentication_node>& path
+        const MerklePath& path,
+        // const size_t address,
+        // const libff::bit_vector& address_bits,
+        const libff::bit_vector& leaf
+        // const std::vector<merkle_authentication_node>& path
     )
     {
-        address_bits_va.fill_with_bits(this->pb, address_bits);
-        assert(address_bits_va.get_field_element_from_bits(this->pb).as_ulong() == address);
+        // address_bits_va.fill_with_bits(this->pb, address_bits);
+        // assert(address_bits_va.get_field_element_from_bits(this->pb).as_ulong() == address);
         leaf_digest.generate_r1cs_witness(leaf);
-        path_var.generate_r1cs_witness(address, path);
-        ml.generate_r1cs_witness();
+        // path_var.generate_r1cs_witness(address, path);
+        ml.generate_r1cs_witness(path);
     }
 
     void verify(
@@ -712,8 +872,8 @@ public:
         r1cs_ppzksnark_processed_verification_key<BaseT> vk_precomp = r1cs_ppzksnark_verifier_process_vk(vk);
 
         /* make sure that read checker didn't accidentally overwrite anything */
-        address_bits_va.fill_with_bits(this->pb, address_bits);
-        leaf_digest.generate_r1cs_witness(leaf);
+        // address_bits_va.fill_with_bits(this->pb, address_bits);
+        // leaf_digest.generate_r1cs_witness(leaf);
         root_digest.generate_r1cs_witness(root);
         assert(this->pb.is_satisfied());
 
@@ -1454,6 +1614,52 @@ bool ProofVerifier::check(
     }
 }
 
+std::ostream& operator<<(std::ostream &out, const libff::bit_vector &a)
+{
+    // out << a.size();
+    // for(int i = 0; i < a.size(); i++)
+    // {
+    //     out << a[i];
+    // }
+
+    // return out;
+    libff::serialize_bit_vector(out, a);
+}
+
+std::istream& operator>>(std::istream &in, libff::bit_vector &a)
+{
+    // std::size_t size = a.size();
+    // for(int i = 0; i < size; i++)
+    // {
+    //     in >> a[i];
+    // }
+
+    // return in;
+    libff::deserialize_bit_vector(in, a);
+}
+
+std::ostream& operator<<(std::ostream &out, const std::vector<libff::bit_vector> &a)
+{
+    out << a.size();
+    for(int i = 0; i < a.size(); i++)
+    {
+        out << a[i];
+    }
+
+    return out;
+}
+
+std::istream& operator>>(std::istream &in, std::vector<libff::bit_vector> &a)
+{
+    std::size_t size = a.size();
+    for(int i = 0; i < size; i++)
+    {
+        in >> a[i];
+    }
+
+    return in;
+}
+
 std::once_flag init_public_params_once_flag;
 
 void initialize_curve_params()
@@ -1752,26 +1958,28 @@ public:
     }
 
     void makeTestVariables(
-        size_t& address,
-        libff::bit_vector& address_bits,
+        MerklePath& p_path,
+        // size_t& address,
+        // libff::bit_vector& address_bits,
         libff::bit_vector& leaf,
-        std::vector<merkle_authentication_node>& path
+        // std::vector<merkle_authentication_node>& path,
+        libff::bit_vector& root
     )
     {
         /* prepare test variables */
         libff::print_header("Gunero prepare test variables");
-        // std::vector<merkle_authentication_node> path(tree_depth);
-        path = std::vector<merkle_authentication_node>(tree_depth);
+        std::vector<merkle_authentication_node> path(tree_depth);
+        // path = std::vector<merkle_authentication_node>(tree_depth);
 
         libff::bit_vector prev_hash(digest_len);
         std::generate(prev_hash.begin(), prev_hash.end(), [&]() { return std::rand() % 2; });
         // libff::bit_vector leaf = prev_hash;
         leaf = prev_hash;
 
-        // libff::bit_vector address_bits;
+        libff::bit_vector address_bits;
 
-        // size_t address = 0;
-        address = 0;
+        size_t address = 0;
+        // address = 0;
         for (long level = tree_depth-1; level >= 0; --level)
         {
             const bool computed_is_right = (std::rand() % 2);
@@ -1788,15 +1996,20 @@ public:
 
             prev_hash = h;
         }
-        libff::bit_vector root = prev_hash;
+        root = prev_hash;
+
+        p_path = MerklePath(path, address_bits);
+
         printf("\n"); libff::print_indent(); libff::print_mem("after prepare test variables"); libff::print_time("after prepare test variables");
     }
 
     ZCProof prove(
-        const size_t address,
-        const libff::bit_vector& address_bits,
+        const libff::bit_vector root,
+        // const size_t address,
+        // const libff::bit_vector& address_bits,
+        const MerklePath& path,
         const libff::bit_vector& leaf,
-        const std::vector<merkle_authentication_node>& path,
+        // const std::vector<merkle_authentication_node>& path,
         const std::string& pkPath
 
 
@@ -1815,8 +2028,10 @@ public:
     ) {
         libff::print_header("Gunero witness (proof)");
 
+        libff::print_header("Gunero loadFromFile(pk)");
         r1cs_ppzksnark_proving_key<BaseT> pk;
         loadFromFile(pkPath, pk);
+        printf("\n"); libff::print_indent(); libff::print_mem("after Gunero loadFromFile(pk)"); libff::print_time("after Gunero loadFromFile(pk)");
 
         protoboard<FieldT> pb;
         {
@@ -1825,10 +2040,12 @@ public:
             guneromembership_gadget<FieldT, BaseT, HashT, tree_depth> g(pb);
             g.load_r1cs_constraints();
             g.generate_r1cs_witness(
-                address,
-                address_bits,
-                leaf,
-                path
+                // address,
+                // address_bits,
+                // leaf,
+                // path
+                path,
+                leaf
             );
 
             printf("\n"); libff::print_indent(); libff::print_mem("after guneromembership_gadget.load_r1cs_constraints()"); libff::print_time("after guneromembership_gadget.load_r1cs_constraints()");
@@ -1839,8 +2056,9 @@ public:
         assert(pb.is_satisfied());
 
         // TODO: These are copies, which is not strictly necessary.
-        auto primary_input = pb.primary_input();
-        auto aux_input = pb.auxiliary_input();
+        printf("num_inputs: %02x\n", pb.num_inputs());
+        r1cs_primary_input<FieldT> primary_input = pb.primary_input();
+        r1cs_auxiliary_input<FieldT> aux_input = pb.auxiliary_input();
 
         // Swap A and B if it's beneficial (less arithmetic in G2)
         // In our circuit, we already know that it's beneficial
@@ -1850,7 +2068,11 @@ public:
 
         printf("\n"); libff::print_indent(); libff::print_mem("after witness (proof)"); libff::print_time("after witness (proof)");
 
-        return ZCProof();
+        return ZCProof(r1cs_ppzksnark_prover<BaseT>(
+            pk,
+            primary_input,
+            aux_input
+        ));
 
         // return ZCProof(r1cs_ppzksnark_prover<BaseT>(
         //     pk,
@@ -1883,6 +2105,20 @@ public:
 
         r1cs_ppzksnark_processed_verification_key<BaseT> vk_precomp = r1cs_ppzksnark_verifier_process_vk(vk);
 
+
+
+        // /* make sure that read checker didn't accidentally overwrite anything */
+        // address_bits_va.fill_with_bits(this->pb, address_bits);
+        // leaf_digest.generate_r1cs_witness(leaf);
+        // root_digest.generate_r1cs_witness(root);
+        // assert(this->pb.is_satisfied());
+
+        // const size_t num_constraints = this->pb.num_constraints();
+        // const size_t expected_constraints = merkle_tree_check_read_gadget<FieldT, HashT>::expected_constraints(tree_depth);
+        // assert(num_constraints == expected_constraints);
+
+
+
         // if (!vk || !vk_precomp) {
         //     throw std::runtime_error("GuneroMembershipCircuit verifying key not loaded");
         // }
@@ -1892,7 +2128,7 @@ public:
 
             // uint256 h_sig = this->h_sig(randomSeed, nullifiers, pubKeyHash);
 
-            auto witness = guneromembership_gadget<FieldT, BaseT, HashT, tree_depth>::witness_map(
+            r1cs_primary_input<FieldT> witness = guneromembership_gadget<FieldT, BaseT, HashT, tree_depth>::witness_map(
                 // rt,
                 // h_sig,
                 // macs,
@@ -1929,14 +2165,21 @@ int main () {
     libff::init_alt_bn128_params();
 #endif
 
-    // Gunero_test_merkle_tree_check_read_gadget<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT>, 64>();
+#define SPARSE_MERKLE_TREE_DEPTH 64
 
-    GuneroMembershipCircuit<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT>, 64> gmc;
+    // Gunero_test_merkle_tree_check_read_gadget<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT>, SPARSE_MERKLE_TREE_DEPTH>();
 
-    std::string r1csPath = "r1cs.bin";
-    std::string pkPath = "pk.bin";
-    std::string vkPath = "vk.bin";
-    std::string proofPath = "proof.bin";
+    GuneroMembershipCircuit<FieldT, BaseT, sha256_two_to_one_hash_gadget<FieldT>, SPARSE_MERKLE_TREE_DEPTH> gmc;
+
+    std::string r1csPath = "/home/sean/Gunero/build/src/r1cs.bin";
+    std::string pkPath = "/home/sean/Gunero/build/src/pk.bin";
+    std::string vkPath = "/home/sean/Gunero/build/src/vk.bin";
+
+    std::string addressPath = "/home/sean/Gunero/build/src/p_address.bin";
+    std::string leafPath = "/home/sean/Gunero/build/src/p_leaf.bin";
+    std::string pathPath = "/home/sean/Gunero/build/src/p_path.bin";
+    std::string rootPath = "/home/sean/Gunero/build/src/p_root.bin";
+    std::string proofPath = "/home/sean/Gunero/build/src/proof.bin";
 
     /* generate circuit */
     libff::print_header("Gunero Generator");
@@ -1945,15 +2188,25 @@ int main () {
     {
         gmc.generate(r1csPath, pkPath, vkPath);
     }
-    else if (0)
+    else if (1)
     {
-        size_t address;
-        libff::bit_vector address_bits;
+        // size_t address;
+        // libff::bit_vector address_bits;
         libff::bit_vector leaf;
-        std::vector<merkle_authentication_node> path;
-        gmc.makeTestVariables(address, address_bits, leaf, path);
+        // std::vector<merkle_authentication_node> path;
+        libff::bit_vector root;
+        MerklePath path;
 
-        ZCProof proof = gmc.prove(address, address_bits, leaf, path, pkPath);
+        // gmc.makeTestVariables(address, address_bits, leaf, path, root);
+        gmc.makeTestVariables(path, leaf, root);
+
+        // saveToFile(addressPath, address);
+        saveToFile(leafPath, leaf);
+        saveToFile(pathPath, path);
+        saveToFile(rootPath, root);
+
+        // ZCProof proof = gmc.prove(root, address, address_bits, leaf, path, pkPath);
+        ZCProof proof = gmc.prove(root, path, leaf, pkPath);
 
         saveToFile(proofPath, proof);
     }
