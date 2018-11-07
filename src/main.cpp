@@ -1403,6 +1403,72 @@ public:
     }
 };
 
+template <size_t Depth, typename Hash>
+class GuneroMerkleTreeWitness {
+friend class GuneroMerkleTree<Depth, Hash>;
+
+public:
+    // Required for Unserialize()
+    GuneroMerkleTreeWitness() {}
+
+    MerklePath path() const {
+        return tree.path(partial_path());
+    }
+
+    // Return the element being witnessed (should be a note
+    // commitment!)
+    Hash element() const {
+        return tree.last();
+    }
+
+    Hash root() const {
+        return tree.root(Depth, partial_path());
+    }
+
+    void append(Hash obj);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(tree);
+        READWRITE(filled);
+        READWRITE(cursor);
+
+        cursor_depth = tree.next_depth(filled.size());
+    }
+
+    template <size_t D, typename H>
+    friend bool operator==(const GuneroMerkleTreeWitness<D, H>& a,
+                           const GuneroMerkleTreeWitness<D, H>& b);
+
+private:
+    GuneroMerkleTree<Depth, Hash> tree;
+    std::vector<Hash> filled;
+    boost::optional<GuneroMerkleTree<Depth, Hash>> cursor;
+    size_t cursor_depth = 0;
+    std::deque<Hash> partial_path() const;
+    GuneroMerkleTreeWitness(GuneroMerkleTree<Depth, Hash> tree) : tree(tree) {}
+};
+
+typedef GuneroMerkleTreeWitness<INCREMENTAL_MERKLE_TREE_DEPTH, sha256_two_to_one_hash_gadget<FieldT>> ZCIncrementalWitness;
+
+class JSInput {
+public:
+    ZCIncrementalWitness witness;
+    Note note;
+    SpendingKey key;
+
+    JSInput();
+    JSInput(ZCIncrementalWitness witness,
+            Note note,
+            SpendingKey key) : witness(witness), note(note), key(key) { }
+
+    uint256 nullifier() const {
+        return note.nullifier(key);
+    }
+};
+
 template<typename FieldT, typename HashT, size_t tree_depth>
 class gunerotransfer_gadget : gadget<FieldT> {
 private:
@@ -1425,7 +1491,7 @@ private:
     pb_variable_array<FieldT> zk_total_uint64;
 
     // Input note gadgets
-    std::shared_ptr<input_note_gadget<FieldT>> zk_input_notes;
+    std::shared_ptr<input_note_gadget<FieldT, HashT, tree_depth>> zk_input_notes;
     std::shared_ptr<PRF_pk_gadget<FieldT>> zk_mac_authentication;
 
     // Output note gadgets
@@ -1446,14 +1512,14 @@ public:
             alloc_uint256(zk_unpacked_inputs, zk_merkle_root);
             alloc_uint256(zk_unpacked_inputs, zk_h_sig);
 
-            for (size_t i = 0; i < NumInputs; i++) {
-                alloc_uint256(zk_unpacked_inputs, zk_input_nullifiers[i]);
-                alloc_uint256(zk_unpacked_inputs, zk_input_macs[i]);
-            }
+            // for (size_t i = 0; i < NumInputs; i++) {
+                alloc_uint256(zk_unpacked_inputs, zk_input_nullifiers);
+                alloc_uint256(zk_unpacked_inputs, zk_input_macs);
+            // }
 
-            for (size_t i = 0; i < NumOutputs; i++) {
-                alloc_uint256(zk_unpacked_inputs, zk_output_commitments[i]);
-            }
+            // for (size_t i = 0; i < NumOutputs; i++) {
+                alloc_uint256(zk_unpacked_inputs, zk_output_commitments);
+            // }
 
             alloc_uint64(zk_unpacked_inputs, zk_vpub_old);
             alloc_uint64(zk_unpacked_inputs, zk_vpub_new);
@@ -1483,38 +1549,38 @@ public:
 
         zk_total_uint64.allocate(pb, 64);
 
-        for (size_t i = 0; i < NumInputs; i++) {
+        // for (size_t i = 0; i < NumInputs; i++) {
             // Input note gadget for commitments, macs, nullifiers,
             // and spend authority.
-            zk_input_notes[i].reset(new input_note_gadget<FieldT>(
+            zk_input_notes.reset(new input_note_gadget<FieldT, HashT,  tree_depth>(
                 pb,
                 ZERO,
-                zk_input_nullifiers[i],
+                zk_input_nullifiers,
                 *zk_merkle_root
             ));
 
             // The input keys authenticate h_sig to prevent
             // malleability.
-            zk_mac_authentication[i].reset(new PRF_pk_gadget<FieldT>(
+            zk_mac_authentication.reset(new PRF_pk_gadget<FieldT>(
                 pb,
                 ZERO,
-                zk_input_notes[i]->a_sk->bits,
+                zk_input_notes->a_sk->bits,
                 zk_h_sig->bits,
-                i ? true : false,
-                zk_input_macs[i]
+                false,//i ? true : false,
+                zk_input_macs
             ));
-        }
+        // }
 
-        for (size_t i = 0; i < NumOutputs; i++) {
-            zk_output_notes[i].reset(new output_note_gadget<FieldT>(
+        // for (size_t i = 0; i < NumOutputs; i++) {
+            zk_output_notes.reset(new output_note_gadget<FieldT>(
                 pb,
                 ZERO,
                 zk_phi->bits,
                 zk_h_sig->bits,
-                i ? true : false,
-                zk_output_commitments[i]
+                false,//i ? true : false,
+                zk_output_commitments
             ));
-        }
+        // }
     }
 
     void generate_r1cs_constraints() {
@@ -1528,30 +1594,30 @@ public:
         // Constrain bitness of phi
         zk_phi->generate_r1cs_constraints();
 
-        for (size_t i = 0; i < NumInputs; i++) {
+        // for (size_t i = 0; i < NumInputs; i++) {
             // Constrain the JoinSplit input constraints.
-            zk_input_notes[i]->generate_r1cs_constraints();
+            zk_input_notes->generate_r1cs_constraints();
 
             // Authenticate h_sig with a_sk
-            zk_mac_authentication[i]->generate_r1cs_constraints();
-        }
+            zk_mac_authentication->generate_r1cs_constraints();
+        // }
 
-        for (size_t i = 0; i < NumOutputs; i++) {
+        // for (size_t i = 0; i < NumOutputs; i++) {
             // Constrain the JoinSplit output constraints.
-            zk_output_notes[i]->generate_r1cs_constraints();
-        }
+            zk_output_notes->generate_r1cs_constraints();
+        // }
 
         // Value balance
         {
             linear_combination<FieldT> left_side = packed_addition(zk_vpub_old);
-            for (size_t i = 0; i < NumInputs; i++) {
-                left_side = left_side + packed_addition(zk_input_notes[i]->value);
-            }
+            // for (size_t i = 0; i < NumInputs; i++) {
+                left_side = left_side + packed_addition(zk_input_notes->value);
+            // }
 
             linear_combination<FieldT> right_side = packed_addition(zk_vpub_new);
-            for (size_t i = 0; i < NumOutputs; i++) {
-                right_side = right_side + packed_addition(zk_output_notes[i]->value);
-            }
+            // for (size_t i = 0; i < NumOutputs; i++) {
+                right_side = right_side + packed_addition(zk_output_notes->value);
+            // }
 
             // Ensure that both sides are equal
             this->pb.add_r1cs_constraint(r1cs_constraint<FieldT>(
@@ -1581,8 +1647,8 @@ public:
         const uint252& phi,
         const uint256& rt,
         const uint256& h_sig,
-        const boost::array<JSInput, NumInputs>& inputs,
-        const boost::array<Note, NumOutputs>& outputs,
+        const JSInput& inputs,
+        const Note& outputs,
         uint64_t vpub_old,
         uint64_t vpub_new
     ) {
@@ -1612,9 +1678,9 @@ public:
         {
             // Witness total_uint64 bits
             uint64_t left_side_acc = vpub_old;
-            for (size_t i = 0; i < NumInputs; i++) {
-                left_side_acc += inputs[i].note.value;
-            }
+            // for (size_t i = 0; i < NumInputs; i++) {
+                left_side_acc += inputs.note.value;
+            // }
 
             zk_total_uint64.fill_with_bits(
                 this->pb,
@@ -1634,23 +1700,23 @@ public:
             uint256_to_bool_vector(h_sig)
         );
 
-        for (size_t i = 0; i < NumInputs; i++) {
+        // for (size_t i = 0; i < NumInputs; i++) {
             // Witness the input information.
-            auto merkle_path = inputs[i].witness.path();
-            zk_input_notes[i]->generate_r1cs_witness(
+            auto merkle_path = inputs.witness.path();
+            zk_input_notes->generate_r1cs_witness(
                 merkle_path,
-                inputs[i].key,
-                inputs[i].note
+                inputs.key,
+                inputs.note
             );
 
             // Witness macs
             zk_mac_authentication[i]->generate_r1cs_witness();
-        }
+        // }
 
-        for (size_t i = 0; i < NumOutputs; i++) {
+        // for (size_t i = 0; i < NumOutputs; i++) {
             // Witness the output information.
-            zk_output_notes[i]->generate_r1cs_witness(outputs[i]);
-        }
+            zk_output_notes->generate_r1cs_witness(outputs);
+        // }
 
         // [SANITY CHECK] Ensure that the intended root
         // was witnessed by the inputs, even if the read
@@ -1671,9 +1737,9 @@ public:
     static r1cs_primary_input<FieldT> witness_map(
         const uint256& rt,
         const uint256& h_sig,
-        const boost::array<uint256, NumInputs>& macs,
-        const boost::array<uint256, NumInputs>& nullifiers,
-        const boost::array<uint256, NumOutputs>& commitments,
+        const uint256& macs,
+        const uint256& nullifiers,
+        const uint256& commitments,
         uint64_t vpub_old,
         uint64_t vpub_new
     ) {
@@ -1682,14 +1748,14 @@ public:
         insert_uint256(verify_inputs, rt);
         insert_uint256(verify_inputs, h_sig);
         
-        for (size_t i = 0; i < NumInputs; i++) {
+        // for (size_t i = 0; i < NumInputs; i++) {
             insert_uint256(verify_inputs, nullifiers[i]);
             insert_uint256(verify_inputs, macs[i]);
-        }
+        // }
 
-        for (size_t i = 0; i < NumOutputs; i++) {
+        // for (size_t i = 0; i < NumOutputs; i++) {
             insert_uint256(verify_inputs, commitments[i]);
-        }
+        // }
 
         insert_uint64(verify_inputs, vpub_old);
         insert_uint64(verify_inputs, vpub_new);
@@ -2594,20 +2660,6 @@ public:
 
     uint256 cm() const;
     uint256 nullifier(const SpendingKey& a_sk) const;
-};
-
-class JSInput {
-public:
-    Note note;
-    SpendingKey key;
-
-    JSInput();
-    JSInput(Note note,
-            SpendingKey key) : note(note), key(key) { }
-
-    uint256 nullifier() const {
-        return note.nullifier(key);
-    }
 };
 
 class JSOutput {
