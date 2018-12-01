@@ -5,3 +5,5 @@ authors = ["Sean Coughlin <sean@froth.com>"]
 
 [dependencies]
 rust-crypto = "^0.2"
+libc = "*"
+rand = "*"
