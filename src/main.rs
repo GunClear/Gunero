@@ -12,12 +12,11 @@ use tiny_keccak::keccak256;
 // use std::io::BufRead;
 //use std::io::prelude::*;
 // use std::fs::File;
-// use crypto::ed25519;
+// use std::str;
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 use libc::c_char;
 use std::ffi::CString;
-// use std::str;
 
 #[link(name="silencerd")]
 extern "C" {
@@ -27,7 +26,7 @@ extern "C" {
         N_account: u8,
         V_accountHex: *const c_char,
         s_accountHex: *const c_char,
-        M_accountPath: *const c_char,
+        M_accountHexArray: *const c_char,
         A_accountHex: *const c_char,
         r_accountHex: *const c_char,
         pkPath: *const c_char,
@@ -128,7 +127,18 @@ fn main() {
 
     let pk_path = CString::new("/home/sean/Gunero/demo/GTM.pk.bin").expect("CString::new failed");
     let vk_path = CString::new("/home/sean/Gunero/demo/GTM.vk.bin").expect("CString::new failed");
-    let proof_path = CString::new("/home/sean/Gunero/demo/GTM.proof.bin").expect("CString::new failed");
+    let proof_path = CString::new("/home/sean/Gunero/demo/GTM.proof.002.bin").expect("CString::new failed");
+
+    //Build M_accountHexArray
+    let mut M_accountHexArray_builder = String::new();
+    for level in 0..160 {
+        let level_hex = to_hex(&test_variables.M_account[level]);
+        M_accountHexArray_builder.push_str(&level_hex);
+        if level == 159 {
+            M_accountHexArray_builder.push_str(";");
+        }
+    }
+    let M_accountHexArray = CString::new(M_accountHexArray_builder).expect("CString::new failed");
 
     let ret = unsafe {
         prove_membership(
@@ -136,7 +146,7 @@ fn main() {
             N_account,
             V_account_hex.as_ptr(),
             s_account_hex.as_ptr(),
-            M_account_hex.as_ptr(),
+            M_accountHexArray.as_ptr(),
             A_account_hex.as_ptr(),
             r_account_hex.as_ptr(),
             pk_path.as_ptr(),
