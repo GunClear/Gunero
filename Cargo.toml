@@ -7,3 +7,5 @@ authors = ["Sean Coughlin <sean@froth.com>"]
 rust-crypto = "^0.2"
 libc = "*"
 rand = "*"
+secp256k1 = "*"
+tiny-keccak = "1.0"
