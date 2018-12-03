@@ -70,10 +70,18 @@ extern "C" {
         vkPath: *const c_char,
         proofPath: *const c_char
         ) -> i32;
+    fn verify_send_wit(
+        witnessPath: *const c_char,
+        vkPath: *const c_char,
+        proofPath: *const c_char
+        ) -> i32;
 }
 
 fn main() {
     let _args: Vec<String> = env::args().collect();
+
+    let EXECUTE_MEMBERSHIP = false;
+    let EXECUTE_SEND = true;
 
     // let file = match File::open("my_file.txt") {
     //     Ok(file) => file,
@@ -101,21 +109,21 @@ fn main() {
 
     let test_variables = make_test_variables();
 
-    println!("s_account: {}", to_hex(&test_variables.s_account));
-    println!("A_account_secret_key: {}", test_variables.A_account_secret_key);
-    println!("A_account_public_key: {}", test_variables.A_account_public_key);
-    println!("A_account: {}", to_hex(&test_variables.A_account));
-    println!("N_account: {}", test_variables.N_account);
-    println!("r_account: {}", to_hex(&test_variables.r_account));
+    // println!("s_account: {}", to_hex(&test_variables.s_account));
+    // println!("A_account_secret_key: {}", test_variables.A_account_secret_key);
+    // println!("A_account_public_key: {}", test_variables.A_account_public_key);
+    // println!("A_account: {}", to_hex(&test_variables.A_account));
+    // println!("N_account: {}", test_variables.N_account);
+    // println!("r_account: {}", to_hex(&test_variables.r_account));
 
-    println!("P_proof: {}", to_hex(&test_variables.P_proof));
-    println!("leaf: {}", to_hex(&test_variables.leaf));
-    println!("M_account: {}", test_variables.M_account.len());
-    println!("W: {}", to_hex(&test_variables.W));
-    println!("V_account: {}", to_hex(&test_variables.V_account));
+    // println!("P_proof: {}", to_hex(&test_variables.P_proof));
+    // println!("leaf: {}", to_hex(&test_variables.leaf));
+    // println!("M_account: {}", test_variables.M_account.len());
+    // println!("W: {}", to_hex(&test_variables.W));
+    // println!("V_account: {}", to_hex(&test_variables.V_account));
 
-    println!("s_S: {}", to_hex(&test_variables.s_S));
-    println!("A_PS: {}", to_hex(&test_variables.A_PS));
+    // println!("s_S: {}", to_hex(&test_variables.s_S));
+    // println!("A_PS: {}", to_hex(&test_variables.A_PS));
 
     //Public Input variables
     let W_hex = CString::new(to_hex(&test_variables.W)).expect("CString::new failed");
@@ -158,10 +166,10 @@ fn main() {
             M_accountHexArray_builder.push_str(";");
         }
     }
-    println!("M_accountHexArray_builder: {}", M_accountHexArray_builder);
+    // println!("M_accountHexArray_builder: {}", M_accountHexArray_builder);
     let M_accountHexArray = CString::new(M_accountHexArray_builder).expect("CString::new failed");
 
-    if false {
+    if EXECUTE_MEMBERSHIP {
         let gtm_pk_path = CString::new("/home/sean/Gunero/demo/GTM.pk.bin").expect("CString::new failed");
         let gtm_vk_path = CString::new("/home/sean/Gunero/demo/GTM.vk.bin").expect("CString::new failed");
         let gtm_proof_path = CString::new("/home/sean/Gunero/demo/GTM.proof.002.bin").expect("CString::new failed");
@@ -208,10 +216,31 @@ fn main() {
         }
     }
 
-    if true {
+    if EXECUTE_SEND {
         let gts_pk_path = CString::new("/home/sean/Gunero/demo/GTS.pk.bin").expect("CString::new failed");
         let gts_vk_path = CString::new("/home/sean/Gunero/demo/GTS.vk.bin").expect("CString::new failed");
-        let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.002.bin").expect("CString::new failed");
+        let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.001.bin").expect("CString::new failed");
+        // let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.bin").expect("CString::new failed");
+        // let gts_witness_path = CString::new("/home/sean/Gunero/demo/GTS.witness.bin").expect("CString::new failed");
+
+        // let ret = unsafe {
+        //     verify_send_wit(
+        //         gts_witness_path.as_ptr(),
+        //         gts_vk_path.as_ptr(),
+        //         gts_proof_path.as_ptr()
+        //     )
+        // };
+
+        // if ret == 0 {
+        //     //Success
+        //     println!("Success 1!");
+        // }
+        // else {
+        //     //Failure
+        //     println!("Failure 1: {}", ret);
+        // }
+
+        // return;
 
         let ret = unsafe {
             prove_send(
@@ -234,6 +263,7 @@ fn main() {
 
         if ret == 0 {
             //Success
+            println!("Success 1!");
 
             let ret = unsafe {
                 verify_send(
@@ -248,7 +278,7 @@ fn main() {
             };
             if ret == 0 {
                 //Success
-                println!("Success!");
+                println!("Success 2!");
             }
             else {
                 //Failure
@@ -609,7 +639,8 @@ fn make_test_variables()
         sha256.result(&mut hash_output_2);
         sha256.reset();
 
-        let mut hash_input_left = A_PS.to_vec();
+        let mut buffer = [0u8; 12].to_vec();
+        let mut hash_input_left = A_PS.to_vec(); hash_input_left.append(&mut buffer);
         let mut hash_input_right = hash_output_2.to_vec();
         assert_eq!(hash_input_left.len(), 32);
         assert_eq!(hash_input_right.len(), 32);
@@ -663,7 +694,8 @@ fn make_test_variables()
         sha256.result(&mut hash_output_2);
         sha256.reset();
 
-        let mut hash_input_left = A_S.to_vec();
+        let mut buffer = [0u8; 12].to_vec();
+        let mut hash_input_left = A_S.to_vec(); hash_input_left.append(&mut buffer);
         let mut hash_input_right = hash_output_2.to_vec();
         assert_eq!(hash_input_left.len(), 32);
         assert_eq!(hash_input_right.len(), 32);

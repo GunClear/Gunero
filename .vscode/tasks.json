@@ -28,6 +28,17 @@
             "problemMatcher": [
                 "$rustc"
             ]
+        },
+        {
+            "type": "cargo",
+            "label": "cargo run",
+            "command": "RUST_BACKTRACE=1 cargo",
+            "args": [
+                "run"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ]
         }
     ]
 }
