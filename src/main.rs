@@ -20,7 +20,7 @@ use crypto::digest::Digest;
 use libc::c_char;
 use std::ffi::CString;
 
-#[link(name="silencerd")]
+#[link(name="silencer")]
 extern "C" {
     //Prove Membership
     fn prove_membership(
@@ -75,6 +75,34 @@ extern "C" {
         vkPath: *const c_char,
         proofPath: *const c_char
         ) -> i32;
+    //Prove Transaction Receive
+    fn prove_receive(
+        WHex: *const c_char,
+        THex: *const c_char,
+        V_SHex: *const c_char,
+        V_RHex: *const c_char,
+        LHex: *const c_char,
+        s_RHex: *const c_char,
+        r_RHex: *const c_char,
+        A_SHex: *const c_char,
+        r_SHex: *const c_char,
+        FHex: *const c_char,
+        jHex: *const c_char,
+        A_RHex: *const c_char,
+        P_proof_SHex: *const c_char,
+        pkPath: *const c_char,
+        vkPath: *const c_char,
+        proofPath: *const c_char
+    ) -> i32;
+    fn verify_receive(
+        WHex: *const c_char,
+        THex: *const c_char,
+        V_SHex: *const c_char,
+        V_RHex: *const c_char,
+        LHex: *const c_char,
+        vkPath: *const c_char,
+        proofPath: *const c_char
+    ) -> i32;
 }
 
 fn main() {
@@ -82,6 +110,7 @@ fn main() {
 
     let EXECUTE_MEMBERSHIP = false;
     let EXECUTE_SEND = true;
+    let EXECUTE_RECEIVE = false;
 
     // let file = match File::open("my_file.txt") {
     //     Ok(file) => file,
@@ -108,22 +137,6 @@ fn main() {
     // let input_text_trimmed = input_text.trim();
 
     let test_variables = make_test_variables();
-
-    // println!("s_account: {}", to_hex(&test_variables.s_account));
-    // println!("A_account_secret_key: {}", test_variables.A_account_secret_key);
-    // println!("A_account_public_key: {}", test_variables.A_account_public_key);
-    // println!("A_account: {}", to_hex(&test_variables.A_account));
-    // println!("N_account: {}", test_variables.N_account);
-    // println!("r_account: {}", to_hex(&test_variables.r_account));
-
-    // println!("P_proof: {}", to_hex(&test_variables.P_proof));
-    // println!("leaf: {}", to_hex(&test_variables.leaf));
-    // println!("M_account: {}", test_variables.M_account.len());
-    // println!("W: {}", to_hex(&test_variables.W));
-    // println!("V_account: {}", to_hex(&test_variables.V_account));
-
-    // println!("s_S: {}", to_hex(&test_variables.s_S));
-    // println!("A_PS: {}", to_hex(&test_variables.A_PS));
 
     //Public Input variables
     let W_hex = CString::new(to_hex(&test_variables.W)).expect("CString::new failed");
@@ -166,7 +179,6 @@ fn main() {
             M_accountHexArray_builder.push_str(";");
         }
     }
-    // println!("M_accountHexArray_builder: {}", M_accountHexArray_builder);
     let M_accountHexArray = CString::new(M_accountHexArray_builder).expect("CString::new failed");
 
     if EXECUTE_MEMBERSHIP {
@@ -220,27 +232,6 @@ fn main() {
         let gts_pk_path = CString::new("/home/sean/Gunero/demo/GTS.pk.bin").expect("CString::new failed");
         let gts_vk_path = CString::new("/home/sean/Gunero/demo/GTS.vk.bin").expect("CString::new failed");
         let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.001.bin").expect("CString::new failed");
-        // let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.bin").expect("CString::new failed");
-        // let gts_witness_path = CString::new("/home/sean/Gunero/demo/GTS.witness.bin").expect("CString::new failed");
-
-        // let ret = unsafe {
-        //     verify_send_wit(
-        //         gts_witness_path.as_ptr(),
-        //         gts_vk_path.as_ptr(),
-        //         gts_proof_path.as_ptr()
-        //     )
-        // };
-
-        // if ret == 0 {
-        //     //Success
-        //     println!("Success 1!");
-        // }
-        // else {
-        //     //Failure
-        //     println!("Failure 1: {}", ret);
-        // }
-
-        // return;
 
         let ret = unsafe {
             prove_send(
@@ -290,13 +281,67 @@ fn main() {
             println!("Failure 1: {}", ret);
         }
     }
+
+    if EXECUTE_RECEIVE {
+        let gtr_pk_path = CString::new("/home/sean/Gunero/demo/GTR.pk.bin").expect("CString::new failed");
+        let gtr_vk_path = CString::new("/home/sean/Gunero/demo/GTR.vk.bin").expect("CString::new failed");
+        let gtr_proof_path = CString::new("/home/sean/Gunero/demo/GTR.proof.001.bin").expect("CString::new failed");
+
+        let ret = unsafe {
+            prove_receive(
+                W_hex.as_ptr(),
+                T_hex.as_ptr(),
+                V_S_hex.as_ptr(),
+                V_R_hex.as_ptr(),
+                L_hex.as_ptr(),
+                s_R_hex.as_ptr(),
+                r_R_hex.as_ptr(),
+                A_S_hex.as_ptr(),
+                r_S_hex.as_ptr(),
+                F_hex.as_ptr(),
+                j_hex.as_ptr(),
+                A_R_hex.as_ptr(),
+                P_proof_S_hex.as_ptr(),
+                gtr_pk_path.as_ptr(),
+                gtr_vk_path.as_ptr(),
+                gtr_proof_path.as_ptr()
+            )
+        };
+
+        if ret == 0 {
+            //Success
+            println!("Success 3.0!");
+
+            let ret = unsafe {
+                verify_receive(
+                W_hex.as_ptr(),
+                T_hex.as_ptr(),
+                V_S_hex.as_ptr(),
+                V_R_hex.as_ptr(),
+                L_hex.as_ptr(),
+                gtr_vk_path.as_ptr(),
+                gtr_proof_path.as_ptr()
+                )
+            };
+            if ret == 0 {
+                //Success
+                println!("Success 3.1!");
+            }
+            else {
+                //Failure
+                println!("Failure 3.0: {}", ret);
+            }
+        }
+        else {
+            //Failure
+            println!("Failure 3.1: {}", ret);
+        }
+    }
 }
 
 struct TestVariables {
     N_account: u8,
     s_account: Vec<u8>,
-    A_account_secret_key: SecretKey,
-    A_account_public_key: PublicKey,
     r_account: Vec<u8>,
     A_account: Vec<u8>,
     P_proof: Vec<u8>,
@@ -327,13 +372,63 @@ fn make_test_variables()
         -> TestVariables {
     let mut rng = rand::thread_rng();
 
-    //Generate basic variables
-    let mut s_account: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
-    let N_account = 1u8;
-    let r_account: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
+    if false {
+        let W = parse_hex("8a05e4bb6ecc0891346c813960e2a03b496d04c719299278ce23a9c407317649");
+        let T = parse_hex("a1dce3b29c0881c8e78c89adadf00f816ce77a2373a43ce154ac6f2c2743c3bb");
+        let V_S = parse_hex("f5da29b399859f2f13bc4c51ed197a710d1a4a8f8f812b3bd1bf4e3add86b81f");
+        let V_R = parse_hex("782791b7da8d329d0e169ae4642cec05eaa102b3f70f720f1dd2a535407c865a");
+        let L_P = parse_hex("6f9127a505971eb2d995714337fdd2741922533fda6d4a21d1c1d9ccce33788c");
+        let s_S = parse_hex("0c43a98ba9ec557c54a47826df6a4c694bc13b829e7fb68f066a1ccfb0daa34d");
+        let r_S = parse_hex("1d4cd8c7382d438cd2bcb2b126fe1a72bf56f45ed5aaeddb150aaac5e44d1201");
+        let r_R = parse_hex("beaaefcac20b6167e4fcc54d01bfbc1932eab75475232ed087e14f3680dd7c3e");
+        let A_PS = parse_hex("99eac8d1180c5deac80f9bee0db660cd0c542be1");
+        let W_P = parse_hex("ff18bc142266d906b4ec084dd6d01feedc7cd8a48c7493992af3663648911747");
+        let P_proof_R = parse_hex("297177444968e060ef727bff8a333a0514a34db05b862dc0fc1e44fb06c9bd34");
 
-    let mut s_S: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
-    let r_S: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
+        let _test_variables = TestVariables{
+            N_account : 1u8,
+            s_account : Vec::with_capacity(0),
+            r_account : Vec::with_capacity(0),
+            A_account : Vec::with_capacity(0),
+            P_proof : Vec::with_capacity(0),
+            leaf : Vec::with_capacity(0),
+            M_account: vec![vec![0u8; 32]; 160],
+            W : W,
+            V_account : Vec::with_capacity(0),
+            T : T,
+            V_S : V_S,
+            V_R : V_R,
+            L_P : L_P,
+            s_S : s_S,
+            r_S : r_S,
+            r_R : r_R,
+            A_PS : A_PS,
+            W_P : W_P,
+            P_proof_R : P_proof_R,
+            F : Vec::with_capacity(0),
+            j : Vec::with_capacity(0),
+            L : Vec::with_capacity(0),
+            P_proof_S : Vec::with_capacity(0),
+            A_R : Vec::with_capacity(0),
+            s_R : Vec::with_capacity(0),
+            A_S : Vec::with_capacity(0),
+        };
+
+        return _test_variables;
+    }
+
+    //Generate basic variables
+    let mut s_account: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> P_proof, A_account_secret_key, A_account_public_key, A_account, A_R, L
+    let N_account = 1u8;
+    let r_account: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> V_account, r_R
+
+    let mut s_S: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> A_S_secret_key, A_S_public_key, A_S, L, L_P
+    let r_S: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> V_S
+
+    let A_PS: Vec<u8> = (0..20).map(|_v| rng.gen()).collect();//=> L_P
+    let W_P: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> L_P
+    let F: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> T
+    let j: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//=> T
 
     //Check s_account for 252 compliance
     if s_account[0] > 15 {
@@ -345,48 +440,49 @@ fn make_test_variables()
     }
 
     //Create keys and account
-    let secp = Secp256k1::new();
-    let A_account_secret_key = SecretKey::from_slice(&secp, &s_account).expect("32 bytes, within curve order");
-    let A_account_public_key = PublicKey::from_secret_key(&secp, &A_account_secret_key);
-
-    let A_account_public_key_bytes_extra: [u8; 65] = A_account_public_key.serialize_uncompressed();
-    assert_eq!(A_account_public_key_bytes_extra[0], 4);
-    let mut A_account_public_key_bytes = [0u8; 64];
-    //Because of the tragicly bad copying system in Rust
-    for index in 1..65
-    {
-        A_account_public_key_bytes[index - 1] = A_account_public_key_bytes_extra[index];
-    }
-    let A_account_public_key_bytes_keccak256 = keccak256(&A_account_public_key_bytes);
     let mut A_account = [0u8; 20];
-    //Because of the tragicly bad copying system in Rust
-    for index in 12..32
     {
-        A_account[index - 12] = A_account_public_key_bytes_keccak256[index];
+        let secp = Secp256k1::new();
+        let A_account_secret_key = SecretKey::from_slice(&secp, &s_account).expect("32 bytes, within curve order");
+        let A_account_public_key = PublicKey::from_secret_key(&secp, &A_account_secret_key);
+
+        let A_account_public_key_bytes_extra: [u8; 65] = A_account_public_key.serialize_uncompressed();
+        assert_eq!(A_account_public_key_bytes_extra[0], 4);
+        let mut A_account_public_key_bytes = [0u8; 64];
+        //Because of the tragicly bad copying system in Rust
+        for index in 1..65
+        {
+            A_account_public_key_bytes[index - 1] = A_account_public_key_bytes_extra[index];
+        }
+        let A_account_public_key_bytes_keccak256 = keccak256(&A_account_public_key_bytes);
+        //Because of the tragicly bad copying system in Rust
+        for index in 12..32
+        {
+            A_account[index - 12] = A_account_public_key_bytes_keccak256[index];
+        }
     }
 
-    let secp = Secp256k1::new();
-    let A_S_secret_key = SecretKey::from_slice(&secp, &s_S).expect("32 bytes, within curve order");
-    let A_S_public_key = PublicKey::from_secret_key(&secp, &A_S_secret_key);
-
-    let A_S_public_key_bytes_extra: [u8; 65] = A_S_public_key.serialize_uncompressed();
-    assert_eq!(A_S_public_key_bytes_extra[0], 4);
-    let mut A_S_public_key_bytes = [0u8; 64];
-    //Because of the tragicly bad copying system in Rust
-    for index in 1..65
-    {
-        A_S_public_key_bytes[index - 1] = A_S_public_key_bytes_extra[index];
-    }
-    let A_S_public_key_bytes_keccak256 = keccak256(&A_S_public_key_bytes);
     let mut A_S = [0u8; 20];
-    //Because of the tragicly bad copying system in Rust
-    for index in 12..32
     {
-        A_S[index - 12] = A_S_public_key_bytes_keccak256[index];
-    }
+        let secp = Secp256k1::new();
+        let A_S_secret_key = SecretKey::from_slice(&secp, &s_S).expect("32 bytes, within curve order");
+        let A_S_public_key = PublicKey::from_secret_key(&secp, &A_S_secret_key);
 
-    assert_eq!(s_account.len(), 32);
-    assert_eq!(r_account.len(), 32);
+        let A_S_public_key_bytes_extra: [u8; 65] = A_S_public_key.serialize_uncompressed();
+        assert_eq!(A_S_public_key_bytes_extra[0], 4);
+        let mut A_S_public_key_bytes = [0u8; 64];
+        //Because of the tragicly bad copying system in Rust
+        for index in 1..65
+        {
+            A_S_public_key_bytes[index - 1] = A_S_public_key_bytes_extra[index];
+        }
+        let A_S_public_key_bytes_keccak256 = keccak256(&A_S_public_key_bytes);
+        //Because of the tragicly bad copying system in Rust
+        for index in 12..32
+        {
+            A_S[index - 12] = A_S_public_key_bytes_keccak256[index];
+        }
+    }
 
     let mut sha256 = Sha256::new();
 
@@ -514,13 +610,8 @@ fn make_test_variables()
     let V_R = V_account.clone();//hash(P_proof_R, hash(W, r_R)
 
     let r_R = r_account.clone();
-    let A_PS: Vec<u8> = (0..20).map(|_v| rng.gen()).collect();//random_uint160(rng);
-    let W_P: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
     let P_proof_R = P_proof.clone();
 
-    let F: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
-
-    let j: Vec<u8> = (0..32).map(|_v| rng.gen()).collect();//random_uint256(rng);
     let A_R = A_account.clone();
     let s_R = s_account.clone();
 
@@ -716,8 +807,6 @@ fn make_test_variables()
     let _test_variables = TestVariables{
         N_account : N_account,
         s_account : s_account,
-        A_account_secret_key : A_account_secret_key,
-        A_account_public_key : A_account_public_key,
         r_account : r_account,
         A_account : A_account.to_vec(),
         P_proof : P_proof.to_vec(),
@@ -780,11 +869,58 @@ pub fn to_hex(blob: &[u8]) -> String {
     hex_push(&mut s, blob);
     return s;
 }
+fn parse_hex(hex_asm: &str) -> Vec<u8> {
+    let mut hex_bytes = hex_asm.as_bytes().iter().filter_map(|b| {
+        match b {
+            b'0'...b'9' => Some(b - b'0'),
+            b'a'...b'f' => Some(b - b'a' + 10),
+            b'A'...b'F' => Some(b - b'A' + 10),
+            _ => None,
+        }
+    }).fuse();
 
-// fn random_uint256(mut rng: ThreadRng) -> Vec<u8> {
-//     (0..32).map(|_v| rng.gen()).collect()
-// }
+    let mut bytes = Vec::new();
+    while let (Some(h), Some(l)) = (hex_bytes.next(), hex_bytes.next()) {
+        bytes.push(h << 4 | l)
+    }
+    bytes
+}
 
-// fn random_uint160(mut rng: ThreadRng) -> Vec<u8> {
-//     (0..20).map(|_v| rng.gen()).collect()
-// }
+#[test]
+fn test_gts() {
+    let gts_pk_path = CString::new("/home/sean/Gunero/demo/GTS.pk.bin").expect("CString::new failed");
+    let gts_vk_path = CString::new("/home/sean/Gunero/demo/GTS.vk.bin").expect("CString::new failed");
+    let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.test.bin").expect("CString::new failed");
+
+    let W_hex = CString::new("8a05e4bb6ecc0891346c813960e2a03b496d04c719299278ce23a9c407317649").expect("CString::new failed");
+    let T_hex = CString::new("a1dce3b29c0881c8e78c89adadf00f816ce77a2373a43ce154ac6f2c2743c3bb").expect("CString::new failed");
+    let V_S_hex = CString::new("f5da29b399859f2f13bc4c51ed197a710d1a4a8f8f812b3bd1bf4e3add86b81f").expect("CString::new failed");
+    let V_R_hex = CString::new("782791b7da8d329d0e169ae4642cec05eaa102b3f70f720f1dd2a535407c865a").expect("CString::new failed");
+    let L_P_hex = CString::new("6f9127a505971eb2d995714337fdd2741922533fda6d4a21d1c1d9ccce33788c").expect("CString::new failed");
+    let s_S_hex = CString::new("0c43a98ba9ec557c54a47826df6a4c694bc13b829e7fb68f066a1ccfb0daa34d").expect("CString::new failed");
+    let r_S_hex = CString::new("1d4cd8c7382d438cd2bcb2b126fe1a72bf56f45ed5aaeddb150aaac5e44d1201").expect("CString::new failed");
+    let r_R_hex = CString::new("beaaefcac20b6167e4fcc54d01bfbc1932eab75475232ed087e14f3680dd7c3e").expect("CString::new failed");
+    let A_PS_hex = CString::new("99eac8d1180c5deac80f9bee0db660cd0c542be1").expect("CString::new failed");
+    let W_P_hex = CString::new("ff18bc142266d906b4ec084dd6d01feedc7cd8a48c7493992af3663648911747").expect("CString::new failed");
+    let P_proof_R_hex = CString::new("297177444968e060ef727bff8a333a0514a34db05b862dc0fc1e44fb06c9bd34").expect("CString::new failed");
+
+    let ret = unsafe {
+        prove_send(
+            W_hex.as_ptr(),
+            T_hex.as_ptr(),
+            V_S_hex.as_ptr(),
+            V_R_hex.as_ptr(),
+            L_P_hex.as_ptr(),
+            s_S_hex.as_ptr(),
+            r_S_hex.as_ptr(),
+            r_R_hex.as_ptr(),
+            A_PS_hex.as_ptr(),
+            W_P_hex.as_ptr(),
+            P_proof_R_hex.as_ptr(),
+            gts_pk_path.as_ptr(),
+            gts_vk_path.as_ptr(),
+            gts_proof_path.as_ptr()
+        )
+    };
+    assert_eq!(ret, 0);
+}
