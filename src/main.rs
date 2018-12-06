@@ -110,31 +110,7 @@ fn main() {
 
     let EXECUTE_MEMBERSHIP = false;
     let EXECUTE_SEND = true;
-    let EXECUTE_RECEIVE = false;
-
-    // let file = match File::open("my_file.txt") {
-    //     Ok(file) => file,
-    //     Err(..) => panic!("boom"),
-    // };
-    // let mut reader = std::io::BufReader::new(&file);
-    // let buffer_string = &mut String::new();
-    // reader.read_line(buffer_string);
-
-    // let verify_key_path = "vk.bin";
-
-    // let verify_key_path_utf8 = verify_key_path.as_bytes();
-
-    // println!("len verify_key_path: {}", verify_key_path.len());
-    // println!("len verify_key_path_utf8: {}", verify_key_path_utf8.len());
-
-    // let reader: io::Stdin = io::stdin();
-    // let mut input_text: String = String::new();
-    // let result: Result<usize, io::Error> = reader.read_line(&mut input_text);
-    // if result.is_err() {
-    //     println!("failed to read from stdin");
-    //     return;
-    // }
-    // let input_text_trimmed = input_text.trim();
+    let EXECUTE_RECEIVE = true;
 
     let test_variables = make_test_variables();
 
@@ -203,6 +179,7 @@ fn main() {
 
         if ret == 0 {
             //Success
+            println!("Success 1.1!");
 
             let ret = unsafe {
                 verify_membership(
@@ -215,16 +192,16 @@ fn main() {
             };
             if ret == 0 {
                 //Success
-                println!("Success!");
+                println!("Success 1.2!");
             }
             else {
                 //Failure
-                println!("Failure 2: {}", ret);
+                println!("Failure 1.2: {}", ret);
             }
         }
         else {
             //Failure
-            println!("Failure 1: {}", ret);
+            println!("Failure 1.1: {}", ret);
         }
     }
 
@@ -254,7 +231,7 @@ fn main() {
 
         if ret == 0 {
             //Success
-            println!("Success 1!");
+            println!("Success 2.1!");
 
             let ret = unsafe {
                 verify_send(
@@ -269,16 +246,16 @@ fn main() {
             };
             if ret == 0 {
                 //Success
-                println!("Success 2!");
+                println!("Success 2.2!");
             }
             else {
                 //Failure
-                println!("Failure 2: {}", ret);
+                println!("Failure 2.2: {}", ret);
             }
         }
         else {
             //Failure
-            println!("Failure 1: {}", ret);
+            println!("Failure 2.1: {}", ret);
         }
     }
 
@@ -310,7 +287,7 @@ fn main() {
 
         if ret == 0 {
             //Success
-            println!("Success 3.0!");
+            println!("Success 3.1!");
 
             let ret = unsafe {
                 verify_receive(
@@ -325,11 +302,11 @@ fn main() {
             };
             if ret == 0 {
                 //Success
-                println!("Success 3.1!");
+                println!("Success 3.2!");
             }
             else {
                 //Failure
-                println!("Failure 3.0: {}", ret);
+                println!("Failure 3.2: {}", ret);
             }
         }
         else {
@@ -438,6 +415,15 @@ fn make_test_variables()
     if s_S[0] > 15 {
         s_S[0] &= 0x0F;
     }
+
+
+    // let s_S = parse_hex("01f31ab506d4bc3e908739084ace8638a61b2a6e0fbc3c8d210bb7788c08688e");
+    // let r_S = parse_hex("fb83430157ff3fe78778efd1477509ed90335c9fef982c11a3e4892fecf2bde7");
+
+    // let A_PS = parse_hex("7500e8cc0027b3879fa258e61762d4a795304785");
+    // let W_P = parse_hex("c873966b571f9a4311582a86581252583905dfd9a738bfbe9a93662fc3adb48b");
+    // let F = parse_hex("0000000000000000000000000000000000000000000000000000000000000000");//parse_hex("b8bbff8c00a579a971e77d9c7ab811c39ca1648d6a39d4970f9b528a6eaec227");
+    // let j = parse_hex("0000000000000000000000000000000000000000000000000000000000000000");//parse_hex("69c1b36a662d13d71491748e498551e526b67390ef4727ffe2798950284b7791");
 
     //Create keys and account
     let mut A_account = [0u8; 20];
@@ -569,6 +555,7 @@ fn make_test_variables()
         sha256.reset();
     }
     let W: Vec<u8> = prev_hash.to_vec();
+    // let W = parse_hex("ad972fe6bca713c853f26800e8547e2b7990e22946af51a3378aa9d1f5ec0ed1");
 
     //V_account = hash(P_proof, hash(W, r_account))
     let mut V_account = [0u8; 32];
@@ -639,8 +626,8 @@ fn make_test_variables()
     //T = hash(F, j)
     let mut T = [0u8; 32];
     {
-        let mut hash_input_left = F.to_vec();
-        let mut hash_input_right = j.to_vec();
+        let mut hash_input_left: Vec<u8> = F.clone();//reverse_vec(&j);//F.clone();
+        let mut hash_input_right: Vec<u8> = j.clone();//reverse_vec(&F);//j.clone();
         assert_eq!(hash_input_left.len(), 32);
         assert_eq!(hash_input_right.len(), 32);
 
@@ -696,7 +683,7 @@ fn make_test_variables()
     //L_P = hash(A_PS, hash(s_S, hash(T, W_P)))
     let mut L_P = [0u8; 32];
     {
-        let mut hash_input_left = T.to_vec();
+        let mut hash_input_left = T.to_vec().clone();
         let mut hash_input_right = W_P.clone();
         assert_eq!(hash_input_left.len(), 32);
         assert_eq!(hash_input_right.len(), 32);
@@ -751,7 +738,7 @@ fn make_test_variables()
     //L = hash(A_S, hash(s_R, hash(T, W)))
     let mut L = [0u8; 32];
     {
-        let mut hash_input_left = T.to_vec();
+        let mut hash_input_left = T.to_vec().clone();
         let mut hash_input_right = W.clone();
         assert_eq!(hash_input_left.len(), 32);
         assert_eq!(hash_input_right.len(), 32);
@@ -803,6 +790,28 @@ fn make_test_variables()
         sha256.reset();
     }
 
+
+    println!("s_S: {}", to_hex(&s_S));
+    println!("r_S: {}", to_hex(&r_S));
+    println!("A_PS: {}", to_hex(&A_PS));
+    println!("W_P: {}", to_hex(&W_P));
+    println!("F: {}", to_hex(&F));
+    println!("j: {}", to_hex(&j));
+
+    println!("");
+
+    println!("W: {}", to_hex(&W));
+    println!("T: {}", to_hex(&T));
+    println!("V_S: {}", to_hex(&V_S));
+    println!("V_R: {}", to_hex(&V_R));
+    println!("L_P: {}", to_hex(&L_P));
+    println!("s_S: {}", to_hex(&s_S));
+    println!("r_S: {}", to_hex(&r_S));
+    println!("r_R: {}", to_hex(&r_R));
+    println!("A_PS: {}", to_hex(&A_PS));
+    println!("W_P: {}", to_hex(&W_P));
+    println!("P_proof_R: {}", to_hex(&P_proof_R));
+
     //return
     let _test_variables = TestVariables{
         N_account : N_account,
@@ -834,21 +843,6 @@ fn make_test_variables()
     };
 
     return _test_variables;
-}
-
-#[test]
-fn test_sha_256_empty() {
-    let mut sha256 = Sha256::new();
-    let hash_input: Vec<u8> = Vec::with_capacity(64);
-    sha256.input(hash_input.as_ref());
-    assert_eq!(sha256.result_str(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-
-    sha256.reset();
-    let mut hash_input_left: Vec<u8> = Vec::with_capacity(32);
-    let mut hash_input_right: Vec<u8> = Vec::with_capacity(32);
-    hash_input_left.append(&mut hash_input_right);
-    sha256.input(hash_input_left.as_ref());
-    assert_eq!(sha256.result_str(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 }
 
 pub fn hex_push(buf: &mut String, blob: &[u8]) {
@@ -886,23 +880,51 @@ fn parse_hex(hex_asm: &str) -> Vec<u8> {
     bytes
 }
 
+fn reverse_vec(blob: &Vec<u8>) -> Vec<u8> {
+    let mut reverse: Vec<u8> = Vec::with_capacity(blob.len());
+    for index in 0..blob.len() {
+        reverse.insert(index, blob[blob.len() - index - 1]);
+    }
+    reverse
+}
+
+#[test]
+fn test_sha_256_empty() {
+    let mut sha256 = Sha256::new();
+    let hash_input: Vec<u8> = Vec::with_capacity(64);
+    sha256.input(hash_input.as_ref());
+    assert_eq!(sha256.result_str(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
+    sha256.reset();
+    let hash_input: Vec<u8> = [0u8; 64].to_vec();
+    sha256.input(hash_input.as_ref());
+    assert_eq!(sha256.result_str(), "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b");
+
+    sha256.reset();
+    let mut hash_input_left: Vec<u8> = Vec::with_capacity(32);
+    let mut hash_input_right: Vec<u8> = Vec::with_capacity(32);
+    hash_input_left.append(&mut hash_input_right);
+    sha256.input(hash_input_left.as_ref());
+    assert_eq!(sha256.result_str(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+}
+
 #[test]
 fn test_gts() {
     let gts_pk_path = CString::new("/home/sean/Gunero/demo/GTS.pk.bin").expect("CString::new failed");
     let gts_vk_path = CString::new("/home/sean/Gunero/demo/GTS.vk.bin").expect("CString::new failed");
     let gts_proof_path = CString::new("/home/sean/Gunero/demo/GTS.proof.test.bin").expect("CString::new failed");
 
-    let W_hex = CString::new("8a05e4bb6ecc0891346c813960e2a03b496d04c719299278ce23a9c407317649").expect("CString::new failed");
-    let T_hex = CString::new("a1dce3b29c0881c8e78c89adadf00f816ce77a2373a43ce154ac6f2c2743c3bb").expect("CString::new failed");
-    let V_S_hex = CString::new("f5da29b399859f2f13bc4c51ed197a710d1a4a8f8f812b3bd1bf4e3add86b81f").expect("CString::new failed");
-    let V_R_hex = CString::new("782791b7da8d329d0e169ae4642cec05eaa102b3f70f720f1dd2a535407c865a").expect("CString::new failed");
-    let L_P_hex = CString::new("6f9127a505971eb2d995714337fdd2741922533fda6d4a21d1c1d9ccce33788c").expect("CString::new failed");
-    let s_S_hex = CString::new("0c43a98ba9ec557c54a47826df6a4c694bc13b829e7fb68f066a1ccfb0daa34d").expect("CString::new failed");
-    let r_S_hex = CString::new("1d4cd8c7382d438cd2bcb2b126fe1a72bf56f45ed5aaeddb150aaac5e44d1201").expect("CString::new failed");
-    let r_R_hex = CString::new("beaaefcac20b6167e4fcc54d01bfbc1932eab75475232ed087e14f3680dd7c3e").expect("CString::new failed");
-    let A_PS_hex = CString::new("99eac8d1180c5deac80f9bee0db660cd0c542be1").expect("CString::new failed");
-    let W_P_hex = CString::new("ff18bc142266d906b4ec084dd6d01feedc7cd8a48c7493992af3663648911747").expect("CString::new failed");
-    let P_proof_R_hex = CString::new("297177444968e060ef727bff8a333a0514a34db05b862dc0fc1e44fb06c9bd34").expect("CString::new failed");
+    let W_hex = CString::new("3b6af04fea0230d4073f4f80c742dcb6772c1431190cf561466ab3ca10f5655a").expect("CString::new failed");
+    let T_hex = CString::new("ebe3303ba9044d2f022d8de740e1d3bafcd23a4a736a48610c7232133189d41a").expect("CString::new failed");
+    let V_S_hex = CString::new("a8e63e453d2eb057227430897d312c5be68b86fda8f644aceffcf5bbc223ea6b").expect("CString::new failed");
+    let V_R_hex = CString::new("12d9878c93d8d559d0e924e3d53bfcf6f2199651a208a57e10ef929a396f111c").expect("CString::new failed");
+    let L_P_hex = CString::new("ce610326d0fbc7de2e3fba8ca1fc2c968e1cacbaadf3c5c595837291cc2e00b0").expect("CString::new failed");
+    let s_S_hex = CString::new("0f18990285a5798526ba0a8910af5b8b119977f30fcae2082af136fb46e310f5").expect("CString::new failed");
+    let r_S_hex = CString::new("fba9f7804e7005742a0ffd3bbf58c6d0f13dc40107a6093297402ddd233ed21e").expect("CString::new failed");
+    let r_R_hex = CString::new("e49298999ab48d7a001d6a3ea4a01a46b2a2e196b257f11187413bfb82f60566").expect("CString::new failed");
+    let A_PS_hex = CString::new("e7ca9e363aa3aa65b3a8a072006642f2a306f3ab").expect("CString::new failed");
+    let W_P_hex = CString::new("acfcdd433c0a205f48f37d30bd1b66f7bf105c72b8fce4b96226ab062d9eb1d9").expect("CString::new failed");
+    let P_proof_R_hex = CString::new("4d36c4aa980719f2060ab46b1e838ca782ffafa1451295419b98e12d60f32d72").expect("CString::new failed");
 
     let ret = unsafe {
         prove_send(
